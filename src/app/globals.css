@@ -1,0 +1,267 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Plus Jakarta Sans', sans-serif;
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  body {
+    @apply bg-sand-50 text-sand-900;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    @apply font-bold tracking-tight;
+  }
+}
+
+@layer components {
+  /* Premium Card Style */
+  .card {
+    @apply bg-white rounded-2xl shadow-card transition-shadow duration-300;
+  }
+  
+  .card:hover {
+    @apply shadow-card-hover;
+  }
+  
+  .card-header {
+    @apply px-6 py-4 border-b border-sand-100;
+  }
+  
+  .card-body {
+    @apply p-6;
+  }
+  
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-200 active:scale-[0.98];
+  }
+  
+  .btn-primary {
+    @apply bg-fairway-gradient text-white shadow-lg shadow-fairway-500/20 hover:shadow-xl hover:shadow-fairway-500/30;
+  }
+  
+  .btn-gold {
+    @apply bg-gold-gradient text-fairway-900 shadow-lg shadow-gold-500/20 hover:shadow-xl hover:shadow-gold-500/30;
+  }
+  
+  .btn-outline {
+    @apply border-2 border-fairway-500 text-fairway-600 hover:bg-fairway-50;
+  }
+  
+  .btn-ghost {
+    @apply text-sand-600 hover:bg-sand-100;
+  }
+  
+  /* Form Inputs */
+  .input {
+    @apply w-full px-4 py-3 rounded-xl border border-sand-200 bg-white text-sand-900 placeholder:text-sand-400 transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-fairway-500/20 focus:border-fairway-500;
+  }
+  
+  .input-label {
+    @apply block text-sm font-medium text-sand-700 mb-2;
+  }
+  
+  /* Score Display */
+  .score-circle {
+    @apply w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold;
+  }
+  
+  .score-eagle {
+    @apply bg-eagle/10 text-eagle ring-2 ring-eagle/30;
+  }
+  
+  .score-birdie {
+    @apply bg-birdie/10 text-birdie ring-2 ring-birdie/30;
+  }
+  
+  .score-par {
+    @apply bg-par/10 text-par;
+  }
+  
+  .score-bogey {
+    @apply bg-bogey/10 text-bogey;
+  }
+  
+  .score-double {
+    @apply bg-double/10 text-double;
+  }
+  
+  .score-worse {
+    @apply bg-worse/10 text-worse;
+  }
+  
+  /* Leaderboard */
+  .leaderboard-row {
+    @apply flex items-center gap-4 px-4 py-3 border-b border-sand-100 last:border-b-0;
+  }
+  
+  .leaderboard-position {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold;
+  }
+  
+  .leaderboard-first {
+    @apply bg-gold-gradient text-fairway-900;
+  }
+  
+  .leaderboard-second {
+    @apply bg-sand-300 text-sand-800;
+  }
+  
+  .leaderboard-third {
+    @apply bg-amber-700 text-white;
+  }
+  
+  /* Stat Card */
+  .stat-card {
+    @apply bg-white rounded-xl p-4 border border-sand-100;
+  }
+  
+  .stat-value {
+    @apply text-3xl font-bold text-fairway-700 font-display;
+  }
+  
+  .stat-label {
+    @apply text-sm text-sand-500 mt-1;
+  }
+  
+  /* Golf Hole */
+  .hole-card {
+    @apply bg-white rounded-2xl p-6 border border-sand-100 transition-all duration-300;
+  }
+  
+  .hole-card.active {
+    @apply border-fairway-500 shadow-lg shadow-fairway-500/10;
+  }
+  
+  .hole-number {
+    @apply w-10 h-10 rounded-full bg-fairway-500 text-white flex items-center justify-center font-bold text-lg;
+  }
+  
+  /* Avatar */
+  .avatar {
+    @apply w-10 h-10 rounded-full bg-fairway-100 flex items-center justify-center text-fairway-600 font-semibold;
+  }
+  
+  .avatar-lg {
+    @apply w-16 h-16 text-xl;
+  }
+  
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .badge-green {
+    @apply bg-fairway-100 text-fairway-700;
+  }
+  
+  .badge-gold {
+    @apply bg-gold-100 text-gold-700;
+  }
+  
+  .badge-red {
+    @apply bg-red-100 text-red-700;
+  }
+  
+  /* Tab Navigation */
+  .tab-nav {
+    @apply flex gap-1 p-1 bg-sand-100 rounded-xl;
+  }
+  
+  .tab-item {
+    @apply px-4 py-2 rounded-lg text-sm font-medium text-sand-600 transition-all duration-200;
+  }
+  
+  .tab-item.active {
+    @apply bg-white text-fairway-700 shadow-sm;
+  }
+  
+  .tab-item:not(.active):hover {
+    @apply text-sand-800;
+  }
+}
+
+@layer utilities {
+  /* Glass effect */
+  .glass {
+    @apply bg-white/80 backdrop-blur-lg;
+  }
+  
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-fairway-gradient;
+  }
+  
+  /* Subtle pattern background */
+  .pattern-dots {
+    background-image: radial-gradient(#d4c4a5 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  
+  /* Smooth scroll */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Hide scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Animation delays */
+  .delay-100 { animation-delay: 100ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Custom scrollbar for main content */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f3ede1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d4c4a5;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #b8a07a;
+}

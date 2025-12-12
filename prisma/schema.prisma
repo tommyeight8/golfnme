@@ -1,0 +1,235 @@
+// Golf Score Tracker - Database Schema
+// Prisma ORM with MongoDB
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  name          String
+  username      String    @unique
+  passwordHash  String?   // Optional for OAuth users
+  avatarUrl     String?
+  handicap      Float?
+  homeCourseId  String?   @db.ObjectId
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  homeCourse    Course?   @relation("HomeCourse", fields: [homeCourseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rounds        Round[]
+  scores        Score[]
+  
+  // Friends system
+  sentRequests      FriendRequest[] @relation("SentRequests")
+  receivedRequests  FriendRequest[] @relation("ReceivedRequests")
+  friendsAsUser1    Friendship[]    @relation("FriendshipUser1")
+  friendsAsUser2    Friendship[]    @relation("FriendshipUser2")
+  
+  // Group sessions
+  hostedSessions    GroupSession[]  @relation("SessionHost")
+  sessionMembers    SessionMember[]
+}
+
+// ============================================
+// FRIENDS SYSTEM
+// ============================================
+
+model FriendRequest {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  senderId    String        @db.ObjectId
+  receiverId  String        @db.ObjectId
+  status      RequestStatus @default(PENDING)
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  sender      User          @relation("SentRequests", fields: [senderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  receiver    User          @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  @@unique([senderId, receiverId])
+}
+
+model Friendship {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  user1Id   String   @db.ObjectId
+  user2Id   String   @db.ObjectId
+  
+  createdAt DateTime @default(now())
+  
+  user1     User     @relation("FriendshipUser1", fields: [user1Id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user2     User     @relation("FriendshipUser2", fields: [user2Id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  @@unique([user1Id, user2Id])
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+// ============================================
+// COURSES & HOLES
+// ============================================
+
+model Course {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  city        String?
+  state       String?
+  country     String   @default("USA")
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  
+  par         Int      @default(72)
+  numHoles    Int      @default(18)
+  rating      Float?   // Course rating
+  slope       Int?     // Slope rating
+  
+  imageUrl    String?
+  isPublic    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  holes         Hole[]
+  rounds        Round[]
+  homeUsers     User[]          @relation("HomeCourse")
+  groupSessions GroupSession[]
+}
+
+model Hole {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  courseId     String   @db.ObjectId
+  holeNumber   Int
+  par          Int
+  yardage      Int?
+  handicapRank Int?     // Difficulty ranking 1-18
+  
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  scores       Score[]
+  
+  @@unique([courseId, holeNumber])
+}
+
+// ============================================
+// ROUNDS & SCORES
+// ============================================
+
+model Round {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String      @db.ObjectId
+  courseId      String      @db.ObjectId
+  sessionId     String?     @db.ObjectId  // Null for solo rounds
+  
+  playedAt      DateTime    @default(now())
+  weather       String?
+  notes         String?
+  
+  totalScore    Int?
+  totalPutts    Int?
+  fairwaysHit   Int?
+  greensInReg   Int?
+  
+  status        RoundStatus @default(IN_PROGRESS)
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Relations
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course        Course       @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session       GroupSession? @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  scores        Score[]
+}
+
+model Score {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  roundId     String   @db.ObjectId
+  holeId      String   @db.ObjectId
+  userId      String   @db.ObjectId
+  
+  strokes     Int
+  putts       Int?
+  fairwayHit  Boolean?
+  greenInReg  Boolean?
+  penalties   Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  round       Round    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  hole        Hole     @relation(fields: [holeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([roundId, holeId, userId])
+}
+
+enum RoundStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+// ============================================
+// GROUP SESSIONS (Real-time Multiplayer)
+// ============================================
+
+model GroupSession {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  hostId      String        @db.ObjectId
+  courseId    String        @db.ObjectId
+  name        String?
+  inviteCode  String        @unique
+  
+  status      SessionStatus @default(WAITING)
+  maxPlayers  Int           @default(4)
+  
+  startedAt   DateTime?
+  endedAt     DateTime?
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  // Relations
+  host        User          @relation("SessionHost", fields: [hostId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  course      Course        @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  members     SessionMember[]
+  rounds      Round[]
+}
+
+model SessionMember {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId   String       @db.ObjectId
+  userId      String       @db.ObjectId
+  
+  joinedAt    DateTime     @default(now())
+  isReady     Boolean      @default(false)
+  
+  session     GroupSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([sessionId, userId])
+}
+
+enum SessionStatus {
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
