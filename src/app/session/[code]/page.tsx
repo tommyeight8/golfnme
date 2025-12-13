@@ -27,6 +27,7 @@ import {
   getScoreRelativeToPar,
 } from "@/lib/golf-utils";
 import type { Course, Hole } from "@/types";
+import { useSession } from "next-auth/react";
 
 // ---- Types matching your API responses ----
 
@@ -48,6 +49,20 @@ interface ApiMember {
   user: ApiUser;
 }
 
+interface ApiScore {
+  id: string;
+  holeId: string;
+  strokes: number;
+  putts?: number;
+}
+
+interface ApiRound {
+  id: string;
+  userId: string;
+  scores: ApiScore[];
+  user: ApiUser;
+}
+
 interface ApiSession {
   id: string;
   hostId: string;
@@ -57,6 +72,7 @@ interface ApiSession {
   course: Course & { holes?: Hole[] };
   host: ApiUser;
   members: ApiMember[];
+  rounds?: ApiRound[];
 }
 
 interface LeaderboardEntry {
@@ -66,7 +82,7 @@ interface LeaderboardEntry {
   totalScore: number;
   scoreToPar: number;
   lastUpdate: Date;
-  scores: number[]; // 18 scores
+  scores: number[];
 }
 
 interface ChatMessage {
@@ -79,8 +95,9 @@ export default function ActiveSessionPage() {
   const router = useRouter();
   const params = useParams();
   const inviteCode = params.code as string;
+  const { data: session, status: authStatus } = useSession();
 
-  const { user } = useAuthStore();
+  const user = session?.user; // Get user from NextAuth session
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +108,7 @@ export default function ActiveSessionPage() {
 
   const [players, setPlayers] = useState<LeaderboardEntry[]>([]);
   const [myScores, setMyScores] = useState<number[]>(Array(18).fill(0));
+  const [myRoundId, setMyRoundId] = useState<string | null>(null);
 
   const [currentHole, setCurrentHole] = useState(1);
   const [strokes, setStrokes] = useState(4);
@@ -104,6 +122,12 @@ export default function ActiveSessionPage() {
 
   const [readyLoading, setReadyLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
+
+  const [putts, setPutts] = useState<number | undefined>(undefined);
+  const [fairwayHit, setFairwayHit] = useState<boolean | undefined>(undefined);
+  const [greenInReg, setGreenInReg] = useState<boolean | undefined>(undefined);
+
+  const [isCompleting, setIsCompleting] = useState(false);
 
   const course: (Course & { holes?: Hole[] }) | null =
     sessionData?.course ?? null;
@@ -121,14 +145,16 @@ export default function ActiveSessionPage() {
 
   const hole = holes[currentHole - 1];
 
+  // Check if all holes are scored
+  const allHolesScored = myScores.filter((s) => s > 0).length === holes.length;
+
   const currentUserId = user?.id;
+
   const isHost = !!(
     sessionData &&
     currentUserId &&
     sessionData.hostId === currentUserId
   );
-
-  console.log("USER:", user);
 
   const myMember = sessionData?.members.find((m) => m.userId === currentUserId);
   const isMeReady = !!myMember?.isReady;
@@ -157,6 +183,51 @@ export default function ActiveSessionPage() {
     }));
   }
 
+  function buildLeaderboardFromRounds(
+    session: ApiSession,
+    courseHoles: Hole[]
+  ): LeaderboardEntry[] {
+    if (!session.rounds || session.rounds.length === 0) {
+      return buildPlayersFromSession(session);
+    }
+
+    return session.rounds
+      .map((round) => {
+        const scores = Array(18).fill(0);
+
+        round.scores?.forEach((s) => {
+          const holeNum = courseHoles.find(
+            (h) => h.id === s.holeId
+          )?.holeNumber;
+          if (holeNum) {
+            scores[holeNum - 1] = s.strokes;
+          }
+        });
+
+        const totalScore = scores.reduce((a, b) => a + b, 0);
+        const playedHoles = scores.filter((s) => s > 0).length;
+        const parThrough = courseHoles
+          .slice(0, playedHoles)
+          .reduce((a, h) => a + h.par, 0);
+
+        return {
+          userId: round.userId,
+          userName: round.user?.name || round.user?.username || "Player",
+          currentHole: playedHoles,
+          totalScore,
+          scoreToPar: totalScore - parThrough,
+          lastUpdate: new Date(),
+          scores,
+        };
+      })
+      .sort((a, b) => {
+        if (a.totalScore === 0 && b.totalScore === 0) return 0;
+        if (a.totalScore === 0) return 1;
+        if (b.totalScore === 0) return -1;
+        return a.scoreToPar - b.scoreToPar;
+      });
+  }
+
   function userIsInSession(
     session: ApiSession,
     uId: string | undefined | null
@@ -182,17 +253,53 @@ export default function ActiveSessionPage() {
       }
 
       const session: ApiSession = data.data;
+      console.log("Session rounds:", session.rounds); // Debug
+      console.log("Current user ID:", currentUserId); // Debug
       setSessionData(session);
-      setPlayers((prev) => {
-        // If we already have players with scores, keep them; otherwise initialize
-        if (!prev || prev.length === 0) {
-          return buildPlayersFromSession(session);
-        }
-        return prev;
-      });
-
       setStatus(session.status === "WAITING" ? "lobby" : "playing");
       setIsConnected(true);
+
+      const courseHoles = session.course.holes ?? holes;
+
+      // If in progress, hydrate scores from database
+      if (session.status === "IN_PROGRESS" && session.rounds) {
+        // Find and store my round ID
+        if (currentUserId) {
+          const myRound = session.rounds.find(
+            (r) => r.userId === currentUserId
+          );
+          console.log("My round:", myRound); // Debug
+          if (myRound) {
+            setMyRoundId(myRound.id);
+            console.log("Set myRoundId to:", myRound.id); // Debug
+
+            // Load my scores
+            if (myRound.scores) {
+              const loadedScores = Array(18).fill(0);
+              myRound.scores.forEach((s) => {
+                const holeNum = courseHoles.find(
+                  (h) => h.id === s.holeId
+                )?.holeNumber;
+                if (holeNum) {
+                  loadedScores[holeNum - 1] = s.strokes;
+                }
+              });
+              setMyScores(loadedScores);
+
+              // Find first unplayed hole
+              const firstUnplayed = loadedScores.findIndex((s) => s === 0);
+              if (firstUnplayed !== -1) {
+                setCurrentHole(firstUnplayed + 1);
+              }
+            }
+          }
+        }
+
+        // Build leaderboard from all rounds
+        setPlayers(buildLeaderboardFromRounds(session, courseHoles));
+      } else if (session.status === "WAITING") {
+        setPlayers(buildPlayersFromSession(session));
+      }
     } catch (err) {
       console.error("Error fetching session:", err);
       setError("Failed to load session");
@@ -205,6 +312,9 @@ export default function ActiveSessionPage() {
     if (!currentUserId) return;
 
     if (userIsInSession(session, currentUserId)) return;
+
+    // Don't try to join IN_PROGRESS sessions
+    if (session.status !== "WAITING") return;
 
     try {
       const res = await fetch("/api/sessions", {
@@ -233,10 +343,12 @@ export default function ActiveSessionPage() {
 
   // --- Effects ---
 
+  // Wait for auth to load, then fetch session
   useEffect(() => {
+    if (authStatus === "loading") return; // Wait for auth
     fetchSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inviteCode]);
+  }, [inviteCode, authStatus, currentUserId]); // Add dependencies
 
   useEffect(() => {
     if (sessionData && currentUserId) {
@@ -245,11 +357,26 @@ export default function ActiveSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionData?.id, currentUserId]);
 
+  // Poll for updates while in lobby (detects when host starts game)
+  useEffect(() => {
+    if (status !== "lobby" || authStatus === "loading") return;
+
+    const interval = setInterval(() => {
+      fetchSession();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [status, authStatus, inviteCode]);
+
   // Keep strokes in sync with existing score or par
   useEffect(() => {
     if (!hole) return;
-    setStrokes(myScores[currentHole - 1] || hole.par || 4);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const existingScore = myScores[currentHole - 1];
+    setStrokes(existingScore || hole.par || 4);
+    // Reset detailed inputs when changing holes
+    setPutts(undefined);
+    setFairwayHit(undefined);
+    setGreenInReg(undefined);
   }, [currentHole, hole?.par]);
 
   // --- Actions ---
@@ -287,7 +414,6 @@ export default function ActiveSessionPage() {
       if (!res.ok || !data.success) {
         setError(data.error || "Failed to update ready status");
       } else {
-        // Re-fetch session to get updated member ready flags
         await fetchSession();
       }
     } catch (err) {
@@ -321,9 +447,8 @@ export default function ActiveSessionPage() {
         return;
       }
 
-      const updated: ApiSession = data.data;
-      setSessionData(updated);
-      setStatus("playing");
+      // Refetch to get the created rounds
+      await fetchSession();
     } catch (err) {
       console.error("Error starting session:", err);
       setError("Failed to start session.");
@@ -333,53 +458,86 @@ export default function ActiveSessionPage() {
   };
 
   const handleSaveScore = async () => {
-    if (!hole) return;
+    if (!hole || !sessionData || !myRoundId) {
+      setError("Unable to save score - round not found");
+      return;
+    }
+
     setIsSaving(true);
+    setError(null);
 
-    // Update local scores
-    const newScores = [...myScores];
-    newScores[currentHole - 1] = strokes;
-    setMyScores(newScores);
+    try {
+      const res = await fetch("/api/scores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roundId: myRoundId,
+          holeId: hole.id,
+          strokes,
+          putts,
+          fairwayHit,
+          greenInReg,
+          penalties: 0,
+        }),
+      });
 
-    // Update leaderboard local state
-    const updatedPlayers = [...players].map((p) => {
-      if (p.userId === currentUserId) {
-        const newTotal = newScores.reduce((a, b) => a + (b || 0), 0);
-        const playedHoles = newScores.filter((s) => s > 0).length;
-        const parThrough = holes
-          .slice(0, playedHoles)
-          .reduce((a, h) => a + h.par, 0);
-
-        return {
-          ...p,
-          scores: newScores,
-          totalScore: newTotal,
-          scoreToPar: parThrough ? newTotal - parThrough : 0,
-          currentHole,
-          lastUpdate: new Date(),
-        };
+      if (!res.ok) {
+        const data = await res.json();
+        console.error("Failed to save score:", data.error);
+        setError("Failed to save score");
+        setIsSaving(false);
+        return;
       }
-      return p;
-    });
 
-    // Sort by scoreToPar
-    updatedPlayers.sort((a, b) => {
-      if (a.totalScore === 0 && b.totalScore === 0) return 0;
-      if (a.totalScore === 0) return 1;
-      if (b.totalScore === 0) return -1;
-      return a.scoreToPar - b.scoreToPar;
-    });
+      // Update local state
+      const newScores = [...myScores];
+      newScores[currentHole - 1] = strokes;
+      setMyScores(newScores);
 
-    setPlayers(updatedPlayers);
+      // Update leaderboard
+      const updatedPlayers = players.map((p) => {
+        if (p.userId === currentUserId) {
+          const newTotal = newScores.reduce((a, b) => a + (b || 0), 0);
+          const playedHoles = newScores.filter((s) => s > 0).length;
+          const parThrough = holes
+            .slice(0, playedHoles)
+            .reduce((a, h) => a + h.par, 0);
 
-    // (Optional) Here you could POST score updates to your backend or socket
+          return {
+            ...p,
+            scores: newScores,
+            totalScore: newTotal,
+            scoreToPar: parThrough ? newTotal - parThrough : 0,
+            currentHole,
+            lastUpdate: new Date(),
+          };
+        }
+        return p;
+      });
 
-    await new Promise((r) => setTimeout(r, 250));
-    setIsSaving(false);
+      updatedPlayers.sort((a, b) => {
+        if (a.totalScore === 0 && b.totalScore === 0) return 0;
+        if (a.totalScore === 0) return 1;
+        if (b.totalScore === 0) return -1;
+        return a.scoreToPar - b.scoreToPar;
+      });
 
-    // Auto-advance hole
-    if (currentHole < 18) {
-      setCurrentHole((h) => h + 1);
+      setPlayers(updatedPlayers);
+
+      // Reset detailed inputs for next hole
+      setPutts(undefined);
+      setFairwayHit(undefined);
+      setGreenInReg(undefined);
+
+      // Auto-advance hole
+      if (currentHole < 18) {
+        setCurrentHole((h) => h + 1);
+      }
+    } catch (error) {
+      console.error("Error saving score:", error);
+      setError("Failed to save score");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -392,10 +550,9 @@ export default function ActiveSessionPage() {
     };
     setChatMessages((prev) => [...prev, msg]);
     setChatInput("");
-    // You can also send this via socket here
   };
 
-  // --- Derived totals for you (optional display) ---
+  // --- Derived totals ---
   const myTotalScore = myScores.reduce((a, b) => a + (b || 0), 0);
   const playedHoles = myScores.filter((s) => s > 0).length;
   const courseParThrough = holes
@@ -405,7 +562,7 @@ export default function ActiveSessionPage() {
 
   // --- Render ---
 
-  if (loading && !sessionData) {
+  if ((loading && !sessionData) || authStatus === "loading") {
     return (
       <div className="min-h-screen bg-sand-50 flex items-center justify-center">
         <motion.div
@@ -430,6 +587,38 @@ export default function ActiveSessionPage() {
       </div>
     );
   }
+
+  const handleCompleteRound = async () => {
+    if (!myRoundId) {
+      setError("No round found to complete");
+      return;
+    }
+
+    setIsCompleting(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rounds/${myRoundId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "COMPLETED" }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to complete round");
+        setIsCompleting(false);
+        return;
+      }
+
+      // Navigate to summary page
+      router.push(`/round/${myRoundId}/summary`);
+    } catch (error) {
+      console.error("Error completing round:", error);
+      setError("Failed to complete round");
+      setIsCompleting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-sand-50 flex flex-col">
@@ -509,48 +698,65 @@ export default function ActiveSessionPage() {
               <div className="bg-sand-50 px-4 py-3 flex items-center justify-between border-b border-sand-100">
                 <h3 className="font-medium text-sand-900">Players</h3>
                 <span className="text-sm text-sand-500">
-                  {sessionData.members.length + 1} / {sessionData.maxPlayers}
+                  {sessionData.members.length} / {sessionData.maxPlayers}
                 </span>
               </div>
               <div className="divide-y divide-sand-100">
                 {/* Host */}
-                <div className="flex items-center gap-4 p-4">
-                  <div className="w-10 h-10 rounded-full bg-gold-100 text-gold-600 flex items-center justify-center">
-                    <Crown className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sand-900">
-                      {sessionData.host.name || sessionData.host.username}
-                    </p>
-                    <p className="text-sm text-sand-500">Host</p>
-                  </div>
-                  {sessionData.hostId === currentUserId && (
-                    <span className="px-2 py-1 bg-fairway-100 text-fairway-700 text-xs font-medium rounded-full">
-                      You
-                    </span>
-                  )}
-                </div>
+                {(() => {
+                  const hostMember = sessionData.members.find(
+                    (m) => m.userId === sessionData.hostId
+                  );
+                  return (
+                    <div className="flex items-center gap-4 p-4">
+                      <div className="w-10 h-10 rounded-full bg-gold-100 text-gold-600 flex items-center justify-center">
+                        <Crown className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sand-900">
+                          {sessionData.host.name || sessionData.host.username}
+                        </p>
+                        <p className="text-sm text-sand-500">
+                          Host{" "}
+                          {hostMember
+                            ? hostMember.isReady
+                              ? "• Ready"
+                              : "• Not Ready"
+                            : ""}
+                        </p>
+                      </div>
+                      {sessionData.hostId === currentUserId && (
+                        <span className="px-2 py-1 bg-fairway-100 text-fairway-700 text-xs font-medium rounded-full">
+                          You
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                {sessionData.members.map((m) => (
-                  <div key={m.id} className="flex items-center gap-4 p-4">
-                    <div className="w-10 h-10 rounded-full bg-fairway-100 text-fairway-600 flex items-center justify-center">
-                      {m.user.name?.[0] || m.user.username[0] || "?"}
+                {/* Members (excluding host) */}
+                {sessionData.members
+                  .filter((m) => m.userId !== sessionData.hostId)
+                  .map((m) => (
+                    <div key={m.id} className="flex items-center gap-4 p-4">
+                      <div className="w-10 h-10 rounded-full bg-fairway-100 text-fairway-600 flex items-center justify-center">
+                        {m.user.name?.[0] || m.user.username[0] || "?"}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sand-900">
+                          {m.user.name || m.user.username}
+                        </p>
+                        <p className="text-sm text-sand-500">
+                          {m.isReady ? "Ready" : "Not Ready"}
+                        </p>
+                      </div>
+                      {m.userId === currentUserId && (
+                        <span className="px-2 py-1 bg-fairway-100 text-fairway-700 text-xs font-medium rounded-full">
+                          You
+                        </span>
+                      )}
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-sand-900">
-                        {m.user.name || m.user.username}
-                      </p>
-                      <p className="text-sm text-sand-500">
-                        {m.isReady ? "Ready" : "Not Ready"}
-                      </p>
-                    </div>
-                    {m.userId === currentUserId && (
-                      <span className="px-2 py-1 bg-fairway-100 text-fairway-700 text-xs font-medium rounded-full">
-                        You
-                      </span>
-                    )}
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
 
@@ -576,12 +782,12 @@ export default function ActiveSessionPage() {
               ) : isMeReady ? (
                 <>
                   <Flag className="w-5 h-5" />
-                  I’m Not Ready
+                  I'm Not Ready
                 </>
               ) : (
                 <>
                   <Flag className="w-5 h-5" />
-                  I’m Ready
+                  I'm Ready
                 </>
               )}
             </button>
@@ -695,6 +901,7 @@ export default function ActiveSessionPage() {
 
             {/* Score Entry Card */}
             <div className="card overflow-hidden">
+              {/* Hole Header */}
               <div className="bg-fairway-gradient text-white p-6">
                 <div className="flex items-center justify-between mb-4">
                   <button
@@ -719,79 +926,196 @@ export default function ActiveSessionPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-center">
+                <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
                     <p className="text-white/60 text-xs">Par</p>
                     <p className="text-2xl font-bold">{hole?.par}</p>
                   </div>
                   <div>
                     <p className="text-white/60 text-xs">Yards</p>
-                    <p className="text-2xl font-bold">{hole?.yardage}</p>
+                    <p className="text-2xl font-bold">{hole?.yardage ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/60 text-xs">Handicap</p>
+                    <p className="text-2xl font-bold">
+                      {hole?.handicapRank ?? "—"}
+                    </p>
                   </div>
                 </div>
               </div>
 
-              <div className="p-6">
-                {/* Score Input */}
-                <div className="flex items-center justify-center gap-6 mb-6">
-                  <button
-                    onClick={() => setStrokes((s) => Math.max(1, s - 1))}
-                    className="w-12 h-12 rounded-full bg-sand-100 hover:bg-sand-200 flex items-center justify-center transition-colors"
-                  >
-                    <Minus className="w-5 h-5 text-sand-600" />
-                  </button>
+              <div className="p-6 space-y-6">
+                {/* Strokes Input */}
+                <div>
+                  <p className="text-sm font-medium text-sand-600 mb-3 text-center">
+                    Strokes
+                  </p>
+                  <div className="flex items-center justify-center gap-6">
+                    <button
+                      onClick={() => setStrokes((s) => Math.max(1, s - 1))}
+                      className="w-12 h-12 rounded-full bg-sand-100 hover:bg-sand-200 flex items-center justify-center transition-colors"
+                    >
+                      <Minus className="w-5 h-5 text-sand-600" />
+                    </button>
 
-                  <motion.div
-                    key={strokes}
-                    initial={{ scale: 0.8 }}
-                    animate={{ scale: 1 }}
-                    className={`w-24 h-24 rounded-full flex items-center justify-center text-4xl font-display font-bold ${getScoreColor(
-                      getScoreRelativeToPar(strokes, hole?.par || 4)
-                    )}`}
-                  >
-                    {strokes}
-                  </motion.div>
+                    <motion.div
+                      key={strokes}
+                      initial={{ scale: 0.8 }}
+                      animate={{ scale: 1 }}
+                      className={`w-24 h-24 rounded-full flex items-center justify-center text-4xl font-display font-bold ${getScoreColor(
+                        getScoreRelativeToPar(strokes, hole?.par || 4)
+                      )}`}
+                    >
+                      {strokes}
+                    </motion.div>
 
-                  <button
-                    onClick={() => setStrokes((s) => Math.min(15, s + 1))}
-                    className="w-12 h-12 rounded-full bg-sand-100 hover:bg-sand-200 flex items-center justify-center transition-colors"
-                  >
-                    <Plus className="w-5 h-5 text-sand-600" />
-                  </button>
+                    <button
+                      onClick={() => setStrokes((s) => Math.min(15, s + 1))}
+                      className="w-12 h-12 rounded-full bg-sand-100 hover:bg-sand-200 flex items-center justify-center transition-colors"
+                    >
+                      <Plus className="w-5 h-5 text-sand-600" />
+                    </button>
+                  </div>
+
+                  {/* Quick Score Buttons */}
+                  <div className="grid grid-cols-5 gap-2 mt-4">
+                    {[
+                      (hole?.par ?? 4) - 2,
+                      (hole?.par ?? 4) - 1,
+                      hole?.par ?? 4,
+                      (hole?.par ?? 4) + 1,
+                      (hole?.par ?? 4) + 2,
+                    ]
+                      .filter((s) => s > 0)
+                      .map((score) => (
+                        <button
+                          key={score}
+                          onClick={() => setStrokes(score)}
+                          className={`py-2 rounded-xl text-sm font-medium transition-all ${
+                            strokes === score
+                              ? "bg-fairway-500 text-white"
+                              : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                          }`}
+                        >
+                          {score}
+                        </button>
+                      ))}
+                  </div>
                 </div>
 
-                {/* Quick buttons */}
-                <div className="grid grid-cols-5 gap-2 mb-6">
-                  {[
-                    hole?.par - 2,
-                    hole?.par - 1,
-                    hole?.par,
-                    hole?.par + 1,
-                    hole?.par + 2,
-                  ]
-                    .filter((s) => !!s && s > 0)
-                    .map((score) => (
+                {/* Putts Input */}
+                <div>
+                  <p className="text-sm font-medium text-sand-600 mb-3 text-center">
+                    Putts
+                  </p>
+                  <div className="flex items-center justify-center gap-2">
+                    {[0, 1, 2, 3, 4].map((num) => (
                       <button
-                        key={score}
-                        onClick={() => setStrokes(score!)}
-                        className={`py-3 rounded-xl font-medium transition-all ${
-                          strokes === score
+                        key={num}
+                        onClick={() => setPutts(num)}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-medium transition-all ${
+                          putts === num
                             ? "bg-fairway-500 text-white"
                             : "bg-sand-100 text-sand-600 hover:bg-sand-200"
                         }`}
                       >
-                        {score}
+                        {num}
                       </button>
                     ))}
+                    <button
+                      onClick={() =>
+                        setPutts(
+                          putts !== undefined ? Math.min(10, putts + 1) : 5
+                        )
+                      }
+                      className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-medium transition-all ${
+                        putts !== undefined && putts > 4
+                          ? "bg-fairway-500 text-white"
+                          : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                      }`}
+                    >
+                      {putts !== undefined && putts > 4 ? putts : "5+"}
+                    </button>
+                  </div>
                 </div>
 
+                {/* Fairway & GIR Toggles */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Fairway Hit - Only show for Par 4 and Par 5 */}
+                  {(hole?.par ?? 4) >= 4 && (
+                    <div>
+                      <p className="text-sm font-medium text-sand-600 mb-2 text-center">
+                        Fairway
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setFairwayHit(true)}
+                          className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
+                            fairwayHit === true
+                              ? "bg-birdie text-white"
+                              : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                          }`}
+                        >
+                          <Check className="w-4 h-4" />
+                          Hit
+                        </button>
+                        <button
+                          onClick={() => setFairwayHit(false)}
+                          className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
+                            fairwayHit === false
+                              ? "bg-bogey text-white"
+                              : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                          }`}
+                        >
+                          <X className="w-4 h-4" />
+                          Miss
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Green in Regulation */}
+                  <div
+                    className={`${(hole?.par ?? 4) < 4 ? "col-span-2" : ""}`}
+                  >
+                    <p className="text-sm font-medium text-sand-600 mb-2 text-center">
+                      Green in Reg
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setGreenInReg(true)}
+                        className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
+                          greenInReg === true
+                            ? "bg-birdie text-white"
+                            : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                        }`}
+                      >
+                        <Check className="w-4 h-4" />
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setGreenInReg(false)}
+                        className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
+                          greenInReg === false
+                            ? "bg-bogey text-white"
+                            : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                        }`}
+                      >
+                        <X className="w-4 h-4" />
+                        No
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save Button */}
                 <button
                   onClick={handleSaveScore}
-                  disabled={isSaving}
-                  className="btn btn-primary w-full"
+                  disabled={isSaving || !myRoundId}
+                  className="btn btn-primary w-full py-4 text-lg"
                 >
                   {isSaving ? (
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center justify-center gap-2">
                       <motion.div
                         animate={{ rotate: 360 }}
                         transition={{
@@ -811,19 +1135,38 @@ export default function ActiveSessionPage() {
                   )}
                 </button>
 
-                {/* Optional: show your total */}
-                <div className="mt-4 text-center text-sm text-sand-600">
-                  Through {playedHoles || 0} holes:{" "}
-                  <span className="font-mono font-semibold">
-                    {myTotalScore || "-"} (
-                    {playedHoles ? formatScoreToPar(myScoreToPar) : "E"})
-                  </span>
+                {/* Running Total */}
+                <div className="bg-sand-50 rounded-xl p-4">
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <p className="text-xs text-sand-500">Through</p>
+                      <p className="text-lg font-bold text-sand-900">
+                        {playedHoles} holes
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-sand-500">Total</p>
+                      <p className="text-lg font-bold text-sand-900">
+                        {myTotalScore || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-sand-500">To Par</p>
+                      <p
+                        className={`text-lg font-bold ${
+                          myScoreToPar <= 0 ? "text-birdie" : "text-bogey"
+                        }`}
+                      >
+                        {playedHoles ? formatScoreToPar(myScoreToPar) : "E"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Hole Progress */}
-            <div className="flex gap-1 overflow-x-auto pb-2">
+            <div className="flex gap-1 overflow-x-auto p-2">
               {holes.map((h, i) => {
                 const score = myScores[i];
                 const relative = score
@@ -849,6 +1192,69 @@ export default function ActiveSessionPage() {
                 );
               })}
             </div>
+
+            {/* Finish Round Section */}
+            {allHolesScored && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="card p-6 bg-gradient-to-br from-gold-50 to-gold-100 border-gold-200"
+              >
+                <div className="text-center mb-4">
+                  <Trophy className="w-12 h-12 text-gold-500 mx-auto mb-2" />
+                  <h3 className="text-xl font-display font-bold text-sand-900">
+                    Round Complete!
+                  </h3>
+                  <p className="text-sand-600">
+                    You scored {myTotalScore} ({formatScoreToPar(myScoreToPar)})
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleCompleteRound}
+                  disabled={isCompleting}
+                  className="btn btn-gold w-full py-4 text-lg"
+                >
+                  {isCompleting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{
+                          duration: 1,
+                          repeat: Infinity,
+                          ease: "linear",
+                        }}
+                        className="w-5 h-5 border-2 border-fairway-900/30 border-t-fairway-900 rounded-full"
+                      />
+                      Finishing...
+                    </span>
+                  ) : (
+                    <>
+                      <Flag className="w-5 h-5" />
+                      Finish & View Summary
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            )}
+
+            {/* Or show progress toward completion */}
+            {!allHolesScored && playedHoles > 0 && (
+              <div className="card p-4 bg-sand-50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-sand-600">Round Progress</span>
+                  <span className="text-sm font-medium text-sand-900">
+                    {playedHoles} / {holes.length} holes
+                  </span>
+                </div>
+                <div className="w-full bg-sand-200 rounded-full h-2">
+                  <div
+                    className="bg-fairway-500 h-2 rounded-full transition-all"
+                    style={{ width: `${(playedHoles / holes.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </main>

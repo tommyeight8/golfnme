@@ -75,6 +75,53 @@ interface RoundWithDetails extends Round {
   scores: (Score & { hole: Hole })[];
 }
 
+function useActiveSessions() {
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchSessions() {
+      try {
+        const [waitingRes, inProgressRes] = await Promise.all([
+          fetch("/api/sessions?status=WAITING"),
+          fetch("/api/sessions?status=IN_PROGRESS"),
+        ]);
+
+        const waitingData = waitingRes.ok
+          ? await waitingRes.json()
+          : { data: [] };
+        const inProgressData = inProgressRes.ok
+          ? await inProgressRes.json()
+          : { data: [] };
+
+        const allSessions = [
+          ...(inProgressData.data ?? []),
+          ...(waitingData.data ?? []),
+        ];
+
+        setSessions(allSessions);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load sessions"
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSessions();
+  }, []);
+
+  return {
+    sessions,
+    loading,
+    error,
+    refetch: () => {
+      setLoading(true);
+    },
+  };
+}
+
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
@@ -169,6 +216,201 @@ function useRounds(
   return { data, loading, error };
 }
 
+function SessionsTab() {
+  const router = useRouter();
+  const { sessions, loading, error } = useActiveSessions();
+
+  const inProgressSessions = sessions.filter((s) => s.status === "IN_PROGRESS");
+  const waitingSessions = sessions.filter((s) => s.status === "WAITING");
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-8"
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-2xl font-semibold text-sand-900">
+          Active Sessions
+        </h2>
+        <div className="flex gap-3">
+          <button
+            className="btn btn-gold"
+            onClick={() => router.push("/session/new")}
+          >
+            <Plus className="w-5 h-5" />
+            Create
+          </button>
+          <button
+            className="btn btn-outline"
+            onClick={() => router.push("/session/join")}
+          >
+            <Zap className="w-5 h-5" />
+            Join
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="space-y-4">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="card p-4 animate-pulse">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-sand-200" />
+                <div className="flex-1">
+                  <div className="h-4 bg-sand-200 rounded w-32 mb-2" />
+                  <div className="h-3 bg-sand-200 rounded w-24" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="card p-8 text-center">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+          <p className="text-sand-600">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn btn-outline mt-4"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : sessions.length === 0 ? (
+        <div className="card p-8 text-center">
+          <Users className="w-12 h-12 text-sand-300 mx-auto mb-4" />
+          <p className="text-sand-600 mb-4">
+            No active sessions. Create one or join with an invite code!
+          </p>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={() => router.push("/session/new")}
+              className="btn btn-gold"
+            >
+              <Plus className="w-5 h-5" />
+              Create Session
+            </button>
+            <button
+              onClick={() => router.push("/session/join")}
+              className="btn btn-outline"
+            >
+              <Zap className="w-5 h-5" />
+              Join Session
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* In Progress Sessions */}
+          {inProgressSessions.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="font-display text-lg font-semibold text-sand-900 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-birdie animate-pulse" />
+                In Progress
+              </h3>
+              {inProgressSessions.map((session, index) => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  index={index}
+                  onClick={() => router.push(`/session/${session.inviteCode}`)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Waiting Sessions */}
+          {waitingSessions.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="font-display text-lg font-semibold text-sand-900 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-gold-500" />
+                Waiting to Start
+              </h3>
+              {waitingSessions.map((session, index) => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  index={index}
+                  onClick={() => router.push(`/session/${session.inviteCode}`)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function SessionCard({
+  session,
+  index,
+  onClick,
+}: {
+  session: any;
+  index: number;
+  onClick: () => void;
+}) {
+  const isInProgress = session.status === "IN_PROGRESS";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.05 }}
+      className="card p-4 hover:shadow-card-hover cursor-pointer transition-all"
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-4">
+        <div
+          className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+            isInProgress
+              ? "bg-fairway-100 text-fairway-600"
+              : "bg-gold-100 text-gold-600"
+          }`}
+        >
+          {isInProgress ? (
+            <Play className="w-6 h-6" />
+          ) : (
+            <Users className="w-6 h-6" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-sand-900">
+              {session.course?.name ?? "Golf Session"}
+            </p>
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full ${
+                isInProgress
+                  ? "bg-fairway-100 text-fairway-700"
+                  : "bg-gold-100 text-gold-700"
+              }`}
+            >
+              {isInProgress ? "Playing" : "Lobby"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-sand-500">
+            <span className="flex items-center gap-1">
+              <Users className="w-4 h-4" />
+              {session.members?.length ?? 1} / {session.maxPlayers} players
+            </span>
+            <span className="font-mono">{session.inviteCode}</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-sand-500">Host</p>
+          <p className="font-medium text-sand-700">
+            {session.host?.name || session.host?.username || "Unknown"}
+          </p>
+        </div>
+        <ChevronRight className="w-5 h-5 text-sand-400" />
+      </div>
+    </motion.div>
+  );
+}
+
 function useFriends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
@@ -227,7 +469,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [activeTab, setActiveTab] = useState<
-    "play" | "history" | "stats" | "friends"
+    "play" | "sessions" | "history" | "stats" | "friends"
   >("play");
 
   const { stats, loading: statsLoading } = useStats();
@@ -340,6 +582,7 @@ export default function DashboardPage() {
           <nav className="flex gap-1 py-3">
             {[
               { id: "play" as const, label: "Play", icon: Play },
+              { id: "sessions" as const, label: "Sessions", icon: Zap },
               { id: "history" as const, label: "History", icon: History },
               { id: "stats" as const, label: "Stats", icon: BarChart3 },
               { id: "friends" as const, label: "Friends", icon: Users },
@@ -365,6 +608,7 @@ export default function DashboardPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <AnimatePresence mode="wait">
           {activeTab === "play" && <PlayTab key="play" />}
+          {activeTab === "sessions" && <SessionsTab key="sessions" />}
           {activeTab === "history" && <HistoryTab key="history" />}
           {activeTab === "stats" && <StatsTab key="stats" />}
           {activeTab === "friends" && <FriendsTab key="friends" />}
