@@ -232,8 +232,6 @@ export default function DashboardPage() {
 
   const { stats, loading: statsLoading } = useStats();
 
-  console.log(stats);
-
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-sand-50 flex items-center justify-center">
@@ -259,6 +257,8 @@ export default function DashboardPage() {
     bestRound: stats?.bestRound ?? null,
     handicapIndex: stats?.handicapIndex ?? null,
   };
+
+  console.log(user);
 
   return (
     <div className="min-h-screen bg-sand-50">
