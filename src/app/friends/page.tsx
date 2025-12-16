@@ -125,7 +125,7 @@ export default function FriendsPage() {
   // UI RENDER
   // ============================================
   return (
-    <div className="min-h-screen bg-sand-50">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-fairway-gradient text-white">
         <div className="max-w-3xl mx-auto px-4 py-6">
@@ -208,7 +208,7 @@ export default function FriendsPage() {
                   key={friend.id}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setSelectedFriend(friend)}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-sand-50 transition-colors text-left"
+                  className="w-full flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors text-left"
                 >
                   <div className="w-12 h-12 rounded-full bg-fairway-100 text-fairway-600 flex items-center justify-center font-bold text-lg">
                     {friend.name?.charAt(0).toUpperCase()}

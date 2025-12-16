@@ -66,7 +66,7 @@ export default function AddFriendPage() {
   };
 
   return (
-    <div className="min-h-screen bg-sand-50 p-6">
+    <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-xl mx-auto">
         <h1 className="text-3xl font-bold mb-2 text-sand-900">Add Friends</h1>
         <p className="text-sand-600 mb-6">

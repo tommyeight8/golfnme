@@ -33,12 +33,12 @@ import type {
   FriendRequest,
   PaginatedResponse,
 } from "@/types";
+import Image from "next/image";
 
 // ============================================
 // TYPES - Matching stats.service.ts exactly
 // ============================================
 
-// From stats.service.ts OverviewStats interface
 interface OverviewStats {
   totalRounds: number;
   averageScore: number;
@@ -69,7 +69,6 @@ interface OverviewStats {
   }>;
 }
 
-// Round with relations loaded (from round.repository.ts RoundWithCourse)
 interface RoundWithDetails extends Round {
   course: Course & { holes?: Hole[] };
   scores: (Score & { hole: Hole })[];
@@ -231,7 +230,7 @@ function SessionsTab() {
       className="space-y-8"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-2xl font-semibold text-sand-900">
+        <h2 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
           Active Sessions
         </h2>
         <div className="flex gap-3">
@@ -257,10 +256,10 @@ function SessionsTab() {
           {[...Array(2)].map((_, i) => (
             <div key={i} className="card p-4 animate-pulse">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-sand-200" />
+                <div className="w-12 h-12 rounded-xl bg-sand-200 dark:bg-dark-700" />
                 <div className="flex-1">
-                  <div className="h-4 bg-sand-200 rounded w-32 mb-2" />
-                  <div className="h-3 bg-sand-200 rounded w-24" />
+                  <div className="h-4 bg-sand-200 dark:bg-dark-700 rounded w-32 mb-2" />
+                  <div className="h-3 bg-sand-200 dark:bg-dark-700 rounded w-24" />
                 </div>
               </div>
             </div>
@@ -269,7 +268,7 @@ function SessionsTab() {
       ) : error ? (
         <div className="card p-8 text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-sand-600">{error}</p>
+          <p className="text-sand-600 dark:text-sand-400">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="btn btn-outline mt-4"
@@ -279,8 +278,8 @@ function SessionsTab() {
         </div>
       ) : sessions.length === 0 ? (
         <div className="card p-8 text-center">
-          <Users className="w-12 h-12 text-sand-300 mx-auto mb-4" />
-          <p className="text-sand-600 mb-4">
+          <Users className="w-12 h-12 text-sand-300 dark:text-sand-600 mx-auto mb-4" />
+          <p className="text-sand-600 dark:text-sand-400 mb-4">
             No active sessions. Create one or join with an invite code!
           </p>
           <div className="flex justify-center gap-3">
@@ -305,7 +304,7 @@ function SessionsTab() {
           {/* In Progress Sessions */}
           {inProgressSessions.length > 0 && (
             <div className="space-y-4">
-              <h3 className="font-display text-lg font-semibold text-sand-900 flex items-center gap-2">
+              <h3 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-birdie animate-pulse" />
                 In Progress
               </h3>
@@ -323,7 +322,7 @@ function SessionsTab() {
           {/* Waiting Sessions */}
           {waitingSessions.length > 0 && (
             <div className="space-y-4">
-              <h3 className="font-display text-lg font-semibold text-sand-900 flex items-center gap-2">
+              <h3 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-gold-500" />
                 Waiting to Start
               </h3>
@@ -359,15 +358,67 @@ function SessionCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="card p-4 hover:shadow-card-hover cursor-pointer transition-all"
+      className="card p-3 sm:p-4 hover:shadow-card-hover dark:hover:shadow-card-dark-hover cursor-pointer transition-all"
       onClick={onClick}
     >
-      <div className="flex items-center gap-4">
+      {/* Mobile Layout */}
+      <div className="sm:hidden">
+        <div className="flex items-start gap-3">
+          <div
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              isInProgress
+                ? "bg-fairway-100 dark:bg-fairway-900/40 text-fairway-600 dark:text-fairway-400"
+                : "bg-gold-100 dark:bg-gold-900/40 text-gold-600 dark:text-gold-400"
+            }`}
+          >
+            {isInProgress ? (
+              <Play className="w-5 h-5" />
+            ) : (
+              <Users className="w-5 h-5" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium text-sand-900 dark:text-sand-100 truncate">
+                {session.course?.name ?? "Golf Session"}
+              </p>
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                  isInProgress
+                    ? "bg-fairway-100 dark:bg-fairway-900/40 text-fairway-700 dark:text-fairway-400"
+                    : "bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400"
+                }`}
+              >
+                {isInProgress ? "Playing" : "Lobby"}
+              </span>
+            </div>
+            <p className="text-sm text-sand-500 dark:text-sand-400 mt-1">
+              Hosted by{" "}
+              <span className="text-sand-700 dark:text-sand-300 font-medium">
+                {session.host?.name || session.host?.username || "Unknown"}
+              </span>
+            </p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-sand-400 shrink-0 mt-2" />
+        </div>
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-sand-100 dark:border-dark-800">
+          <span className="flex items-center gap-1.5 text-sm text-sand-500 dark:text-sand-400">
+            <Users className="w-4 h-4" />
+            {session.members?.length ?? 1} / {session.maxPlayers} players
+          </span>
+          <span className="font-mono text-sm text-sand-500 dark:text-sand-400 bg-sand-50 dark:bg-dark-800 px-2 py-0.5 rounded">
+            {session.inviteCode}
+          </span>
+        </div>
+      </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden sm:flex gap-4 items-center">
         <div
-          className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+          className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
             isInProgress
-              ? "bg-fairway-100 text-fairway-600"
-              : "bg-gold-100 text-gold-600"
+              ? "bg-fairway-100 dark:bg-fairway-900/40 text-fairway-600 dark:text-fairway-400"
+              : "bg-gold-100 dark:bg-gold-900/40 text-gold-600 dark:text-gold-400"
           }`}
         >
           {isInProgress ? (
@@ -378,34 +429,36 @@ function SessionCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="font-medium text-sand-900">
+            <p className="font-medium text-sand-900 dark:text-sand-100 truncate">
               {session.course?.name ?? "Golf Session"}
             </p>
             <span
-              className={`text-xs px-2 py-0.5 rounded-full ${
+              className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
                 isInProgress
-                  ? "bg-fairway-100 text-fairway-700"
-                  : "bg-gold-100 text-gold-700"
+                  ? "bg-fairway-100 dark:bg-fairway-900/40 text-fairway-700 dark:text-fairway-400"
+                  : "bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400"
               }`}
             >
               {isInProgress ? "Playing" : "Lobby"}
             </span>
           </div>
-          <div className="flex items-center gap-3 text-sm text-sand-500">
+          <div className="flex items-center gap-3 text-sm text-sand-500 dark:text-sand-400 mt-0.5">
             <span className="flex items-center gap-1">
               <Users className="w-4 h-4" />
               {session.members?.length ?? 1} / {session.maxPlayers} players
             </span>
-            <span className="font-mono">{session.inviteCode}</span>
+            <span className="font-mono bg-sand-50 dark:bg-dark-800 px-2 py-0.5 rounded text-xs">
+              {session.inviteCode}
+            </span>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-sand-500">Host</p>
-          <p className="font-medium text-sand-700">
+        <div className="text-right shrink-0">
+          <p className="text-xs text-sand-500 dark:text-sand-400">Host</p>
+          <p className="font-medium text-sand-700 dark:text-sand-300">
             {session.host?.name || session.host?.username || "Unknown"}
           </p>
         </div>
-        <ChevronRight className="w-5 h-5 text-sand-400" />
+        <ChevronRight className="w-5 h-5 text-sand-400 shrink-0" />
       </div>
     </motion.div>
   );
@@ -476,10 +529,10 @@ export default function DashboardPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-sand-50 flex items-center justify-center">
+      <div className="min-h-screen bg-sand-50 dark:bg-dark-950 flex items-center justify-center transition-colors">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-fairway-600 mx-auto mb-4" />
-          <p className="text-sand-600">Loading...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-fairway-600 dark:text-fairway-400 mx-auto mb-4" />
+          <p className="text-sand-600 dark:text-sand-400">Loading...</p>
         </div>
       </div>
     );
@@ -503,9 +556,9 @@ export default function DashboardPage() {
   console.log(user);
 
   return (
-    <div className="min-h-screen bg-sand-50">
+    <div className="min-h-screen bg-sand-50 dark:bg-dark-950 transition-colors">
       {/* Header */}
-      <header className="bg-fairway-gradient text-white">
+      <header className="bg-fairway-gradient dark:bg-fairway-gradient-dark text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
@@ -513,7 +566,7 @@ export default function DashboardPage() {
                 <Flag className="w-5 h-5" />
               </div>
               <span className="font-display text-xl font-semibold">
-                Fairway
+                GolfnMe
               </span>
             </div>
 
@@ -577,7 +630,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Tab Navigation */}
-      <div className="sticky top-0 z-10 bg-sand-50/80 backdrop-blur-lg border-b border-sand-200">
+      <div className="sticky top-0 z-10 bg-sand-50/80 dark:bg-dark-950/80 backdrop-blur-lg border-b border-sand-200 dark:border-dark-800 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex gap-1 py-3">
             {[
@@ -592,8 +645,8 @@ export default function DashboardPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   activeTab === tab.id
-                    ? "bg-fairway-500 text-white shadow-lg shadow-fairway-500/20"
-                    : "text-sand-600 hover:bg-sand-100"
+                    ? "bg-fairway-500 dark:bg-fairway-600 text-white shadow-lg shadow-fairway-500/20"
+                    : "text-sand-600 dark:text-sand-400 hover:bg-sand-100 dark:hover:bg-dark-800"
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
@@ -673,18 +726,18 @@ function PlayTab() {
           className="card overflow-hidden group cursor-pointer"
           onClick={() => router.push("/round/new")}
         >
-          <div className="relative h-48 bg-fairway-gradient flex items-center justify-center">
+          <div className="relative h-48 bg-fairway-gradient dark:bg-fairway-gradient-dark flex items-center justify-center">
             <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition-colors" />
             <div className="relative text-center text-white">
               <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur mx-auto mb-4 flex items-center justify-center">
                 <User className="w-8 h-8" />
               </div>
-              <h3 className="font-display text-2xl font-semibold">Me Time</h3>
+              <h3 className="font-display text-2xl font-semibold">My Tee</h3>
               <p className="text-white/70 mt-1">Solo round tracking</p>
             </div>
           </div>
           <div className="p-6">
-            <p className="text-sand-600 mb-4">
+            <p className="text-sand-600 dark:text-sand-400 mb-4">
               Track your score hole-by-hole, monitor putts, fairways, and greens
               in regulation.
             </p>
@@ -706,20 +759,22 @@ function PlayTab() {
           whileHover={{ y: -4 }}
           className="card overflow-hidden group cursor-pointer"
         >
-          <div className="relative h-48 bg-gold-gradient flex items-center justify-center">
+          <div className="relative h-48 bg-gold-gradient dark:bg-gold-gradient-dark flex items-center justify-center">
             <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition-colors" />
-            <div className="relative text-center text-fairway-900">
+            <div className="relative text-center text-fairway-900 dark:text-fairway-950">
               <div className="w-16 h-16 rounded-2xl bg-white/30 backdrop-blur mx-auto mb-4 flex items-center justify-center">
                 <Users className="w-8 h-8" />
               </div>
               <h3 className="font-display text-2xl font-semibold">
                 Group Compete
               </h3>
-              <p className="text-fairway-800/70 mt-1">Real-time multiplayer</p>
+              <p className="text-fairway-800/70 dark:text-fairway-900/70 mt-1">
+                Real-time multiplayer
+              </p>
             </div>
           </div>
           <div className="p-6">
-            <p className="text-sand-600 mb-4">
+            <p className="text-sand-600 dark:text-sand-400 mb-4">
               Create a session, invite friends, and track scores in real-time
               with live leaderboards.
             </p>
@@ -746,11 +801,11 @@ function PlayTab() {
       {/* Quick Actions */}
       <div className="card">
         <div className="card-header">
-          <h2 className="font-display text-lg font-semibold text-sand-900">
+          <h2 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100">
             Quick Actions
           </h2>
         </div>
-        <div className="divide-y divide-sand-100">
+        <div className="divide-y divide-sand-100 dark:divide-dark-800">
           <QuickActionRow
             icon={<MapPin className="w-5 h-5" />}
             label="Find Nearby Courses"
@@ -759,10 +814,10 @@ function PlayTab() {
           />
           {inProgressLoading ? (
             <div className="p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-sand-100 animate-pulse" />
+              <div className="w-10 h-10 rounded-xl bg-sand-100 dark:bg-dark-800 animate-pulse" />
               <div className="flex-1">
-                <div className="h-4 bg-sand-100 rounded w-32 mb-2 animate-pulse" />
-                <div className="h-3 bg-sand-100 rounded w-48 animate-pulse" />
+                <div className="h-4 bg-sand-100 dark:bg-dark-800 rounded w-32 mb-2 animate-pulse" />
+                <div className="h-3 bg-sand-100 dark:bg-dark-800 rounded w-48 animate-pulse" />
               </div>
             </div>
           ) : inProgressRound ? (
@@ -810,14 +865,16 @@ function QuickActionRow({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-4 p-4 hover:bg-sand-50 transition-colors text-left"
+      className="w-full flex items-center gap-4 p-4 hover:bg-sand-50 dark:hover:bg-dark-800 transition-colors text-left"
     >
-      <div className="w-10 h-10 rounded-xl bg-fairway-100 text-fairway-600 flex items-center justify-center flex-shrink-0">
+      <div className="w-10 h-10 rounded-xl bg-fairway-100 dark:bg-fairway-900/40 text-fairway-600 dark:text-fairway-400 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-sand-900">{label}</p>
-        <p className="text-sm text-sand-500 truncate">{description}</p>
+        <p className="font-medium text-sand-900 dark:text-sand-100">{label}</p>
+        <p className="text-sm text-sand-500 dark:text-sand-400 truncate">
+          {description}
+        </p>
       </div>
       <ChevronRight className="w-5 h-5 text-sand-400" />
     </button>
@@ -855,7 +912,7 @@ function HistoryTab() {
       className="space-y-6"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-2xl font-semibold text-sand-900">
+        <h2 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
           Round History
         </h2>
         <div className="tab-nav">
@@ -885,12 +942,12 @@ function HistoryTab() {
           {[...Array(3)].map((_, i) => (
             <div key={i} className="card p-4 animate-pulse">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-sand-200" />
+                <div className="w-12 h-12 rounded-xl bg-sand-200 dark:bg-dark-700" />
                 <div className="flex-1">
-                  <div className="h-4 bg-sand-200 rounded w-32 mb-2" />
-                  <div className="h-3 bg-sand-200 rounded w-24" />
+                  <div className="h-4 bg-sand-200 dark:bg-dark-700 rounded w-32 mb-2" />
+                  <div className="h-3 bg-sand-200 dark:bg-dark-700 rounded w-24" />
                 </div>
-                <div className="h-6 bg-sand-200 rounded w-12" />
+                <div className="h-6 bg-sand-200 dark:bg-dark-700 rounded w-12" />
               </div>
             </div>
           ))}
@@ -898,7 +955,7 @@ function HistoryTab() {
       ) : error ? (
         <div className="card p-8 text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-sand-600">{error}</p>
+          <p className="text-sand-600 dark:text-sand-400">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="btn btn-outline mt-4"
@@ -908,8 +965,8 @@ function HistoryTab() {
         </div>
       ) : filteredRounds.length === 0 ? (
         <div className="card p-8 text-center">
-          <Flag className="w-12 h-12 text-sand-300 mx-auto mb-4" />
-          <p className="text-sand-600 mb-4">
+          <Flag className="w-12 h-12 text-sand-300 dark:text-sand-600 mx-auto mb-4" />
+          <p className="text-sand-600 dark:text-sand-400 mb-4">
             No rounds yet. Start playing to see your history!
           </p>
           <button
@@ -932,25 +989,25 @@ function HistoryTab() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="card p-4 hover:shadow-card-hover cursor-pointer transition-all"
+                className="card p-4 hover:shadow-card-hover dark:hover:shadow-card-dark-hover cursor-pointer transition-all"
                 onClick={() => router.push(`/round/${round.id}/summary`)}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-fairway-100 text-fairway-600 flex items-center justify-center font-display font-bold text-lg">
+                  <div className="w-12 h-12 rounded-xl bg-fairway-100 dark:bg-fairway-900/40 text-fairway-600 dark:text-fairway-400 flex items-center justify-center font-display font-bold text-lg">
                     {round.totalScore ?? "-"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-sand-900">
+                      <p className="font-medium text-sand-900 dark:text-sand-100">
                         {round.course?.name ?? "Unknown Course"}
                       </p>
                       {round.sessionId && (
-                        <span className="text-xs bg-gold-100 text-gold-700 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 px-2 py-0.5 rounded-full">
                           Group
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-sm text-sand-500">
+                    <div className="flex items-center gap-3 text-sm text-sand-500 dark:text-sand-400">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
                         {new Date(round.playedAt).toLocaleDateString("en-US", {
@@ -965,10 +1022,10 @@ function HistoryTab() {
                   <div
                     className={`text-lg font-bold ${
                       scoreToPar <= 0
-                        ? "text-birdie"
+                        ? "text-birdie dark:text-emerald-400"
                         : scoreToPar <= 10
-                        ? "text-bogey"
-                        : "text-double"
+                        ? "text-bogey dark:text-amber-400"
+                        : "text-double dark:text-red-400"
                     }`}
                   >
                     {scoreToPar > 0 ? "+" : ""}
@@ -1016,8 +1073,8 @@ function StatsTab() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="stat-card animate-pulse">
-              <div className="h-8 bg-sand-200 rounded w-16 mb-2" />
-              <div className="h-4 bg-sand-200 rounded w-24" />
+              <div className="h-8 bg-sand-200 dark:bg-dark-700 rounded w-16 mb-2" />
+              <div className="h-4 bg-sand-200 dark:bg-dark-700 rounded w-24" />
             </div>
           ))}
         </div>
@@ -1033,8 +1090,8 @@ function StatsTab() {
         exit={{ opacity: 0, y: -20 }}
         className="card p-8 text-center"
       >
-        <BarChart3 className="w-12 h-12 text-sand-300 mx-auto mb-4" />
-        <p className="text-sand-600 mb-4">
+        <BarChart3 className="w-12 h-12 text-sand-300 dark:text-sand-600 mx-auto mb-4" />
+        <p className="text-sand-600 dark:text-sand-400 mb-4">
           {error || "Play some rounds to see your statistics!"}
         </p>
         <button
@@ -1048,30 +1105,33 @@ function StatsTab() {
     );
   }
 
-  // Scoring distribution from stats.service.ts (doubleBogeys + worse)
   const scoringData = [
     {
       name: "Eagles",
       value: stats.scoringDistribution.eagles,
-      color: "bg-eagle",
+      color: "bg-eagle dark:bg-blue-500",
     },
     {
       name: "Birdies",
       value: stats.scoringDistribution.birdies,
-      color: "bg-birdie",
+      color: "bg-birdie dark:bg-emerald-500",
     },
-    { name: "Pars", value: stats.scoringDistribution.pars, color: "bg-par" },
+    {
+      name: "Pars",
+      value: stats.scoringDistribution.pars,
+      color: "bg-par dark:bg-green-500",
+    },
     {
       name: "Bogeys",
       value: stats.scoringDistribution.bogeys,
-      color: "bg-bogey",
+      color: "bg-bogey dark:bg-amber-500",
     },
     {
       name: "Double+",
       value:
         stats.scoringDistribution.doubleBogeys +
         stats.scoringDistribution.worse,
-      color: "bg-double",
+      color: "bg-double dark:bg-red-500",
     },
   ];
 
@@ -1085,12 +1145,12 @@ function StatsTab() {
       className="space-y-8"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-2xl font-semibold text-sand-900">
+        <h2 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
           Performance Stats
         </h2>
         <button
           onClick={() => router.push("/stats")}
-          className="text-sm text-fairway-600 font-medium hover:underline flex items-center gap-1"
+          className="text-sm text-fairway-600 dark:text-fairway-400 font-medium hover:underline flex items-center gap-1"
         >
           View All
           <ChevronRight className="w-4 h-4" />
@@ -1118,14 +1178,16 @@ function StatsTab() {
 
       {/* Scoring Distribution */}
       <div className="card p-6">
-        <h3 className="font-display text-lg font-semibold text-sand-900 mb-6">
+        <h3 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100 mb-6">
           Scoring Distribution
         </h3>
         <div className="space-y-4">
           {scoringData.map((item) => (
             <div key={item.name} className="flex items-center gap-4">
-              <span className="w-20 text-sm text-sand-600">{item.name}</span>
-              <div className="flex-1 h-8 bg-sand-100 rounded-lg overflow-hidden">
+              <span className="w-20 text-sm text-sand-600 dark:text-sand-400">
+                {item.name}
+              </span>
+              <div className="flex-1 h-8 bg-sand-100 dark:bg-dark-800 rounded-lg overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${(item.value / maxValue) * 100}%` }}
@@ -1133,7 +1195,7 @@ function StatsTab() {
                   className={`h-full ${item.color} rounded-lg`}
                 />
               </div>
-              <span className="w-12 text-right font-mono text-sm font-medium text-sand-700">
+              <span className="w-12 text-right font-mono text-sm font-medium text-sand-700 dark:text-sand-300">
                 {item.value}
               </span>
             </div>
@@ -1143,7 +1205,7 @@ function StatsTab() {
 
       {/* Par Performance */}
       <div className="card p-6">
-        <h3 className="font-display text-lg font-semibold text-sand-900 mb-6">
+        <h3 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100 mb-6">
           Par Performance
         </h3>
         <div className="grid grid-cols-3 gap-6">
@@ -1165,7 +1227,7 @@ function StatsTab() {
       {/* Recent Scores Chart */}
       {stats.recentScores.length > 0 && (
         <div className="card p-6">
-          <h3 className="font-display text-lg font-semibold text-sand-900 mb-6">
+          <h3 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100 mb-6">
             Recent Scores
           </h3>
           <div className="space-y-3">
@@ -1174,13 +1236,13 @@ function StatsTab() {
               return (
                 <div key={i} className="flex items-center gap-4">
                   <div
-                    className="w-24 text-sm text-sand-500 truncate"
+                    className="w-24 text-sm text-sand-500 dark:text-sand-400 truncate"
                     title={round.courseName}
                   >
                     {round.courseName}
                   </div>
                   <div className="flex-1 flex items-center gap-2">
-                    <div className="flex-1 h-6 bg-sand-100 rounded-lg overflow-hidden">
+                    <div className="flex-1 h-6 bg-sand-100 dark:bg-dark-800 rounded-lg overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{
@@ -1189,24 +1251,24 @@ function StatsTab() {
                         transition={{ duration: 0.5, delay: i * 0.1 }}
                         className={`h-full rounded-lg ${
                           scoreToPar <= 0
-                            ? "bg-birdie"
+                            ? "bg-birdie dark:bg-emerald-500"
                             : scoreToPar <= 10
-                            ? "bg-bogey"
-                            : "bg-double"
+                            ? "bg-bogey dark:bg-amber-500"
+                            : "bg-double dark:bg-red-500"
                         }`}
                       />
                     </div>
-                    <span className="w-10 text-right font-mono text-sm font-medium text-sand-700">
+                    <span className="w-10 text-right font-mono text-sm font-medium text-sand-700 dark:text-sand-300">
                       {round.score}
                     </span>
                   </div>
                   <div
                     className={`w-12 text-right text-sm font-medium ${
                       scoreToPar <= 0
-                        ? "text-birdie"
+                        ? "text-birdie dark:text-emerald-400"
                         : scoreToPar <= 10
-                        ? "text-bogey"
-                        : "text-double"
+                        ? "text-bogey dark:text-amber-400"
+                        : "text-double dark:text-red-400"
                     }`}
                   >
                     {scoreToPar > 0 ? "+" : ""}
@@ -1233,16 +1295,22 @@ function ParPerformanceCard({
 
   return (
     <div className="text-center">
-      <div className="w-16 h-16 rounded-2xl bg-fairway-100 mx-auto mb-3 flex items-center justify-center">
-        <span className="font-display text-2xl font-bold text-fairway-600">
+      <div className="w-16 h-16 rounded-2xl bg-fairway-100 dark:bg-fairway-900/40 mx-auto mb-3 flex items-center justify-center">
+        <span className="font-display text-2xl font-bold text-fairway-600 dark:text-fairway-400">
           {par}
         </span>
       </div>
-      <p className="text-2xl font-bold text-sand-900">{average.toFixed(2)}</p>
-      <p className="text-sm text-sand-500">Par {par} Average</p>
+      <p className="text-2xl font-bold text-sand-900 dark:text-sand-100">
+        {average.toFixed(2)}
+      </p>
+      <p className="text-sm text-sand-500 dark:text-sand-400">
+        Par {par} Average
+      </p>
       <p
         className={`text-xs mt-1 ${
-          difference <= 0 ? "text-birdie" : "text-bogey"
+          difference <= 0
+            ? "text-birdie dark:text-emerald-400"
+            : "text-bogey dark:text-amber-400"
         }`}
       >
         {difference > 0 ? "+" : ""}
@@ -1336,7 +1404,7 @@ function FriendsTab() {
       className="space-y-6"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-2xl font-semibold text-sand-900">
+        <h2 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
           Friends
         </h2>
         <button
@@ -1362,13 +1430,13 @@ function FriendsTab() {
 
       {/* Friends List */}
       {loading ? (
-        <div className="card divide-y divide-sand-100">
+        <div className="card divide-y divide-sand-100 dark:divide-dark-800">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="flex items-center gap-4 p-4 animate-pulse">
-              <div className="w-10 h-10 rounded-full bg-sand-200" />
+              <div className="w-10 h-10 rounded-full bg-sand-200 dark:bg-dark-700" />
               <div className="flex-1">
-                <div className="h-4 bg-sand-200 rounded w-32 mb-2" />
-                <div className="h-3 bg-sand-200 rounded w-24" />
+                <div className="h-4 bg-sand-200 dark:bg-dark-700 rounded w-32 mb-2" />
+                <div className="h-3 bg-sand-200 dark:bg-dark-700 rounded w-24" />
               </div>
             </div>
           ))}
@@ -1376,12 +1444,12 @@ function FriendsTab() {
       ) : error ? (
         <div className="card p-8 text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-sand-600">{error}</p>
+          <p className="text-sand-600 dark:text-sand-400">{error}</p>
         </div>
       ) : filteredFriends.length === 0 ? (
         <div className="card p-8 text-center">
-          <Users className="w-12 h-12 text-sand-300 mx-auto mb-4" />
-          <p className="text-sand-600 mb-4">
+          <Users className="w-12 h-12 text-sand-300 dark:text-sand-600 mx-auto mb-4" />
+          <p className="text-sand-600 dark:text-sand-400 mb-4">
             {searchQuery
               ? "No friends match your search"
               : "No friends yet. Add some friends to compete!"}
@@ -1397,36 +1465,44 @@ function FriendsTab() {
           )}
         </div>
       ) : (
-        <div className="card divide-y divide-sand-100">
+        <div className="card divide-y divide-sand-100 dark:divide-dark-800">
           {filteredFriends.map((friend, index) => (
             <motion.div
               key={friend.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
-              className="flex items-center gap-4 p-4 hover:bg-sand-50 transition-colors cursor-pointer"
+              className="flex items-center gap-4 p-4 hover:bg-sand-50 dark:hover:bg-dark-800 transition-colors cursor-pointer"
               onClick={() => router.push(`/friends/${friend.id}`)}
             >
-              <div className="avatar bg-fairway-100 text-fairway-600">
+              <div className="avatar bg-fairway-100 dark:bg-fairway-900/40 text-fairway-600 dark:text-fairway-400">
                 {friend.avatarUrl ? (
-                  <img
+                  <Image
                     src={friend.avatarUrl}
-                    alt={friend.name}
-                    className="w-full h-full rounded-full object-cover"
+                    alt={friend.name || ""}
+                    width={32}
+                    height={32}
+                    className="rounded-full"
                   />
                 ) : (
                   friend.name.charAt(0).toUpperCase()
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-medium text-sand-900">{friend.name}</p>
-                <p className="text-sm text-sand-500">@{friend.username}</p>
+                <p className="font-medium text-sand-900 dark:text-sand-100">
+                  {friend.name}
+                </p>
+                <p className="text-sm text-sand-500 dark:text-sand-400">
+                  @{friend.username}
+                </p>
               </div>
               <div className="text-right">
-                <p className="font-mono text-sm font-medium text-fairway-600">
+                <p className="font-mono text-sm font-medium text-fairway-600 dark:text-fairway-400">
                   {friend.handicap?.toFixed(1) ?? "-"}
                 </p>
-                <p className="text-xs text-sand-500">Handicap</p>
+                <p className="text-xs text-sand-500 dark:text-sand-400">
+                  Handicap
+                </p>
               </div>
               <button
                 className="btn btn-outline px-4 py-2 text-sm"
@@ -1444,15 +1520,15 @@ function FriendsTab() {
 
       {/* Pending Requests */}
       <div className="card p-6">
-        <h3 className="font-display text-lg font-semibold text-sand-900 mb-4">
+        <h3 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100 mb-4">
           Pending Requests
         </h3>
         {loading ? (
           <div className="animate-pulse">
-            <div className="h-4 bg-sand-200 rounded w-48" />
+            <div className="h-4 bg-sand-200 dark:bg-dark-700 rounded w-48" />
           </div>
         ) : pendingRequests.length === 0 ? (
-          <p className="text-sand-500 text-center py-4">
+          <p className="text-sand-500 dark:text-sand-400 text-center py-4">
             No pending friend requests
           </p>
         ) : (
@@ -1460,9 +1536,9 @@ function FriendsTab() {
             {pendingRequests.map((request) => (
               <div
                 key={request.id}
-                className="flex items-center gap-4 p-3 bg-sand-50 rounded-xl"
+                className="flex items-center gap-4 p-3 bg-sand-50 dark:bg-dark-800 rounded-xl"
               >
-                <div className="avatar bg-gold-100 text-gold-600">
+                <div className="avatar bg-gold-100 dark:bg-gold-900/40 text-gold-600 dark:text-gold-400">
                   {request.sender?.avatarUrl ? (
                     <img
                       src={request.sender.avatarUrl}
@@ -1474,10 +1550,10 @@ function FriendsTab() {
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-sand-900">
+                  <p className="font-medium text-sand-900 dark:text-sand-100">
                     {request.sender?.name ?? "Unknown"}
                   </p>
-                  <p className="text-sm text-sand-500">
+                  <p className="text-sm text-sand-500 dark:text-sand-400">
                     @{request.sender?.username ?? "unknown"}
                   </p>
                 </div>

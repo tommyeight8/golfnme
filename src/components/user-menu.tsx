@@ -13,6 +13,7 @@ import {
   BarChart3,
   UserPlus,
 } from "lucide-react";
+import Image from "next/image";
 
 export function UserMenu() {
   const { data: session, status } = useSession();
@@ -72,10 +73,12 @@ export function UserMenu() {
       >
         <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-sm font-medium">
           {session.user.image ? (
-            <img
-              src={session.user.image}
+            <Image
+              src={session.user.image!}
               alt={session.user.name || ""}
-              className="w-8 h-8 rounded-full"
+              width={32}
+              height={32}
+              className="rounded-full"
             />
           ) : (
             initials
@@ -118,7 +121,7 @@ export function UserMenu() {
               <Link
                 href="/profile"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sand-50 transition-colors"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <User className="w-5 h-5 text-sand-500" />
                 <span className="text-sand-700">Profile</span>
@@ -127,7 +130,7 @@ export function UserMenu() {
               <Link
                 href="/stats"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sand-50 transition-colors"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <BarChart3 className="w-5 h-5 text-sand-500" />
                 <span className="text-sand-700">My Stats</span>
@@ -136,7 +139,7 @@ export function UserMenu() {
               <Link
                 href="/friends"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sand-50 transition-colors"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <UserPlus className="w-5 h-5 text-sand-500" />
                 <span className="text-sand-700">Friends</span>
@@ -145,7 +148,7 @@ export function UserMenu() {
               <Link
                 href="/settings"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sand-50 transition-colors"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <Settings className="w-5 h-5 text-sand-500" />
                 <span className="text-sand-700">Settings</span>

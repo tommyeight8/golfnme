@@ -175,7 +175,7 @@ export default function NewSessionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-sand-50">
+    <div className="min-h-screen bg-slate-50">
       <header className="bg-gold-gradient text-fairway-900">
         <div className="max-w-3xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
@@ -286,7 +286,7 @@ export default function NewSessionPage() {
                     className={`w-full card p-4 text-left transition-all ${
                       selectedCourse?.id === course.id
                         ? "ring-2 ring-gold-500 bg-gold-50"
-                        : "hover:bg-sand-50"
+                        : "hover:bg-slate-50"
                     }`}
                   >
                     <div className="flex items-center gap-4">
@@ -354,7 +354,7 @@ export default function NewSessionPage() {
             </h2>
 
             {selectedCourse && (
-              <div className="card p-4 bg-sand-50">
+              <div className="card p-4 bg-slate-50">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-gold-100 text-gold-600 flex items-center justify-center">
                     <Flag className="w-5 h-5" />
@@ -396,7 +396,7 @@ export default function NewSessionPage() {
                     className={`card p-4 text-center transition-all ${
                       maxPlayers === num
                         ? "ring-2 ring-gold-500 bg-gold-50"
-                        : "hover:bg-sand-50"
+                        : "hover:bg-slate-50"
                     }`}
                   >
                     <Users
@@ -490,7 +490,7 @@ export default function NewSessionPage() {
               Share Invite Link
             </button>
 
-            <div className="card p-4 bg-sand-50">
+            <div className="card p-4 bg-slate-50">
               <h3 className="font-medium text-sand-900 mb-2">
                 Session Details
               </h3>

@@ -28,6 +28,7 @@ import {
 } from "@/lib/golf-utils";
 import type { Course, Hole } from "@/types";
 import { useSession } from "next-auth/react";
+import { useSessionChat } from "@/hooks/useSessionChat";
 
 // ---- Types matching your API responses ----
 
@@ -97,14 +98,13 @@ export default function ActiveSessionPage() {
   const inviteCode = params.code as string;
   const { data: session, status: authStatus } = useSession();
 
-  const user = session?.user; // Get user from NextAuth session
+  const user = session?.user;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionData, setSessionData] = useState<ApiSession | null>(null);
 
   const [status, setStatus] = useState<"lobby" | "playing">("lobby");
-  const [isConnected, setIsConnected] = useState(false);
 
   const [players, setPlayers] = useState<LeaderboardEntry[]>([]);
   const [myScores, setMyScores] = useState<number[]>(Array(18).fill(0));
@@ -116,9 +116,12 @@ export default function ActiveSessionPage() {
 
   const [copied, setCopied] = useState(false);
 
+  const [lastReadCount, setLastReadCount] = useState(0);
+  const [hasStartedLoading, setHasStartedLoading] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
   const [showChat, setShowChat] = useState(false);
   const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const [readyLoading, setReadyLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
@@ -145,10 +148,49 @@ export default function ActiveSessionPage() {
 
   const hole = holes[currentHole - 1];
 
-  // Check if all holes are scored
   const allHolesScored = myScores.filter((s) => s > 0).length === holes.length;
 
   const currentUserId = user?.id;
+
+  const {
+    messages: chatMessages,
+    isConnected: chatConnected,
+    isLoading: chatLoading,
+    sendMessage,
+  } = useSessionChat({
+    sessionId: sessionData?.id,
+    userId: currentUserId,
+    userName: user?.name || user?.username || "Player",
+  });
+
+  useEffect(() => {
+    setHasStartedLoading(false);
+    setInitialLoadDone(false);
+  }, [sessionData?.id]);
+
+  useEffect(() => {
+    if (chatLoading && sessionData?.id) {
+      setHasStartedLoading(true);
+    }
+  }, [chatLoading, sessionData?.id]);
+
+  useEffect(() => {
+    if (
+      !chatLoading &&
+      hasStartedLoading &&
+      !initialLoadDone &&
+      sessionData?.id
+    ) {
+      setLastReadCount(chatMessages.length);
+      setInitialLoadDone(true);
+    }
+  }, [
+    chatLoading,
+    hasStartedLoading,
+    initialLoadDone,
+    chatMessages.length,
+    sessionData?.id,
+  ]);
 
   const isHost = !!(
     sessionData &&
@@ -158,6 +200,17 @@ export default function ActiveSessionPage() {
 
   const myMember = sessionData?.members.find((m) => m.userId === currentUserId);
   const isMeReady = !!myMember?.isReady;
+
+  const unreadCount = initialLoadDone
+    ? chatMessages
+        .slice(lastReadCount)
+        .filter((msg) => msg.userId !== currentUserId).length
+    : 0;
+
+  const handleOpenChat = () => {
+    setShowChat(true);
+    setLastReadCount(chatMessages.length);
+  };
 
   // --- Helpers ---
 
@@ -253,27 +306,23 @@ export default function ActiveSessionPage() {
       }
 
       const session: ApiSession = data.data;
-      console.log("Session rounds:", session.rounds); // Debug
-      console.log("Current user ID:", currentUserId); // Debug
+      console.log("Session rounds:", session.rounds);
+      console.log("Current user ID:", currentUserId);
       setSessionData(session);
       setStatus(session.status === "WAITING" ? "lobby" : "playing");
-      setIsConnected(true);
 
       const courseHoles = session.course.holes ?? holes;
 
-      // If in progress, hydrate scores from database
       if (session.status === "IN_PROGRESS" && session.rounds) {
-        // Find and store my round ID
         if (currentUserId) {
           const myRound = session.rounds.find(
             (r) => r.userId === currentUserId
           );
-          console.log("My round:", myRound); // Debug
+          console.log("My round:", myRound);
           if (myRound) {
             setMyRoundId(myRound.id);
-            console.log("Set myRoundId to:", myRound.id); // Debug
+            console.log("Set myRoundId to:", myRound.id);
 
-            // Load my scores
             if (myRound.scores) {
               const loadedScores = Array(18).fill(0);
               myRound.scores.forEach((s) => {
@@ -286,7 +335,6 @@ export default function ActiveSessionPage() {
               });
               setMyScores(loadedScores);
 
-              // Find first unplayed hole
               const firstUnplayed = loadedScores.findIndex((s) => s === 0);
               if (firstUnplayed !== -1) {
                 setCurrentHole(firstUnplayed + 1);
@@ -295,7 +343,6 @@ export default function ActiveSessionPage() {
           }
         }
 
-        // Build leaderboard from all rounds
         setPlayers(buildLeaderboardFromRounds(session, courseHoles));
       } else if (session.status === "WAITING") {
         setPlayers(buildPlayersFromSession(session));
@@ -313,7 +360,6 @@ export default function ActiveSessionPage() {
 
     if (userIsInSession(session, currentUserId)) return;
 
-    // Don't try to join IN_PROGRESS sessions
     if (session.status !== "WAITING") return;
 
     try {
@@ -333,7 +379,6 @@ export default function ActiveSessionPage() {
         return;
       }
 
-      // Refresh session data after joining
       await fetchSession();
     } catch (err) {
       console.error("Error joining session:", err);
@@ -343,12 +388,11 @@ export default function ActiveSessionPage() {
 
   // --- Effects ---
 
-  // Wait for auth to load, then fetch session
   useEffect(() => {
-    if (authStatus === "loading") return; // Wait for auth
+    if (authStatus === "loading") return;
     fetchSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inviteCode, authStatus, currentUserId]); // Add dependencies
+  }, [inviteCode, authStatus, currentUserId]);
 
   useEffect(() => {
     if (sessionData && currentUserId) {
@@ -357,7 +401,6 @@ export default function ActiveSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionData?.id, currentUserId]);
 
-  // Poll for updates while in lobby (detects when host starts game)
   useEffect(() => {
     if (status !== "lobby" || authStatus === "loading") return;
 
@@ -368,12 +411,10 @@ export default function ActiveSessionPage() {
     return () => clearInterval(interval);
   }, [status, authStatus, inviteCode]);
 
-  // Keep strokes in sync with existing score or par
   useEffect(() => {
     if (!hole) return;
     const existingScore = myScores[currentHole - 1];
     setStrokes(existingScore || hole.par || 4);
-    // Reset detailed inputs when changing holes
     setPutts(undefined);
     setFairwayHit(undefined);
     setGreenInReg(undefined);
@@ -447,7 +488,6 @@ export default function ActiveSessionPage() {
         return;
       }
 
-      // Refetch to get the created rounds
       await fetchSession();
     } catch (err) {
       console.error("Error starting session:", err);
@@ -489,12 +529,10 @@ export default function ActiveSessionPage() {
         return;
       }
 
-      // Update local state
       const newScores = [...myScores];
       newScores[currentHole - 1] = strokes;
       setMyScores(newScores);
 
-      // Update leaderboard
       const updatedPlayers = players.map((p) => {
         if (p.userId === currentUserId) {
           const newTotal = newScores.reduce((a, b) => a + (b || 0), 0);
@@ -524,12 +562,10 @@ export default function ActiveSessionPage() {
 
       setPlayers(updatedPlayers);
 
-      // Reset detailed inputs for next hole
       setPutts(undefined);
       setFairwayHit(undefined);
       setGreenInReg(undefined);
 
-      // Auto-advance hole
       if (currentHole < 18) {
         setCurrentHole((h) => h + 1);
       }
@@ -543,12 +579,7 @@ export default function ActiveSessionPage() {
 
   const handleSendChat = () => {
     if (!chatInput.trim()) return;
-    const msg: ChatMessage = {
-      userId: currentUserId || "anon",
-      userName: user?.name || user?.username || "You",
-      text: chatInput.trim(),
-    };
-    setChatMessages((prev) => [...prev, msg]);
+    sendMessage(chatInput.trim());
     setChatInput("");
   };
 
@@ -564,11 +595,11 @@ export default function ActiveSessionPage() {
 
   if ((loading && !sessionData) || authStatus === "loading") {
     return (
-      <div className="min-h-screen bg-sand-50 flex items-center justify-center">
+      <div className="min-h-screen bg-sand-50 dark:bg-dark-950 flex items-center justify-center transition-colors">
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-4 border-gold-200 border-t-gold-500 rounded-full"
+          className="w-12 h-12 border-4 border-gold-200 dark:border-gold-800 border-t-gold-500 rounded-full"
         />
       </div>
     );
@@ -576,10 +607,12 @@ export default function ActiveSessionPage() {
 
   if (error && !sessionData) {
     return (
-      <div className="min-h-screen bg-sand-50 flex items-center justify-center">
+      <div className="min-h-screen bg-sand-50 dark:bg-dark-950 flex items-center justify-center transition-colors">
         <div className="card p-8 text-center max-w-md">
-          <p className="text-sand-800 font-semibold mb-2">Session Error</p>
-          <p className="text-sand-600 mb-4">{error}</p>
+          <p className="text-sand-800 dark:text-sand-200 font-semibold mb-2">
+            Session Error
+          </p>
+          <p className="text-sand-600 dark:text-sand-400 mb-4">{error}</p>
           <button onClick={() => router.push("/")} className="btn btn-primary">
             Back to Home
           </button>
@@ -611,7 +644,6 @@ export default function ActiveSessionPage() {
         return;
       }
 
-      // Navigate to summary page
       router.push(`/round/${myRoundId}/summary`);
     } catch (error) {
       console.error("Error completing round:", error);
@@ -621,9 +653,9 @@ export default function ActiveSessionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-sand-50 flex flex-col">
+    <div className="min-h-screen bg-sand-50 dark:bg-dark-950 flex flex-col transition-colors">
       {/* Header */}
-      <header className="bg-gold-gradient text-fairway-900 sticky top-0 z-20">
+      <header className="bg-gold-gradient dark:bg-gold-gradient-dark text-fairway-900 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4">
           <div className="flex items-center justify-between h-14">
             <button
@@ -637,10 +669,10 @@ export default function ActiveSessionPage() {
               <p className="font-medium text-sm">
                 {course?.name || "Golf Session"}
               </p>
-              <div className="flex items-center justify-center gap-2 text-fairway-700/70 text-xs">
+              <div className="flex items-center justify-center gap-2 text-fairway-700/70 dark:text-fairway-800/70 text-xs">
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    isConnected ? "bg-birdie" : "bg-sand-400"
+                    chatConnected ? "bg-birdie" : "bg-sand-400"
                   }`}
                 />
                 <span>{players.length} players</span>
@@ -648,13 +680,13 @@ export default function ActiveSessionPage() {
             </div>
 
             <button
-              onClick={() => setShowChat((s) => !s)}
+              onClick={handleOpenChat}
               className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors relative"
             >
               <MessageCircle className="w-5 h-5" />
-              {chatMessages.length > 0 && (
+              {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {chatMessages.length}
+                  {unreadCount}
                 </span>
               )}
             </button>
@@ -665,7 +697,7 @@ export default function ActiveSessionPage() {
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 space-y-6">
         {/* Top-level inline errors */}
         {error && (
-          <div className="card p-3 text-sm text-red-700 bg-red-50 border border-red-200">
+          <div className="card p-3 text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
             {error}
           </div>
         )}
@@ -679,8 +711,10 @@ export default function ActiveSessionPage() {
           >
             {/* Invite Code */}
             <div className="card p-6 text-center">
-              <p className="text-sm text-sand-500 mb-2">Invite Code</p>
-              <p className="font-mono text-3xl font-bold text-fairway-600 tracking-wider mb-4">
+              <p className="text-sm text-sand-500 dark:text-sand-400 mb-2">
+                Invite Code
+              </p>
+              <p className="font-mono text-3xl font-bold text-fairway-600 dark:text-fairway-400 tracking-wider mb-4">
                 {sessionData.inviteCode}
               </p>
               <button onClick={handleCopyCode} className="btn btn-outline">
@@ -695,13 +729,15 @@ export default function ActiveSessionPage() {
 
             {/* Players List */}
             <div className="card overflow-hidden">
-              <div className="bg-sand-50 px-4 py-3 flex items-center justify-between border-b border-sand-100">
-                <h3 className="font-medium text-sand-900">Players</h3>
-                <span className="text-sm text-sand-500">
+              <div className="bg-sand-50 dark:bg-dark-800 px-4 py-3 flex items-center justify-between border-b border-sand-100 dark:border-dark-700">
+                <h3 className="font-medium text-sand-900 dark:text-sand-100">
+                  Players
+                </h3>
+                <span className="text-sm text-sand-500 dark:text-sand-400">
                   {sessionData.members.length} / {sessionData.maxPlayers}
                 </span>
               </div>
-              <div className="divide-y divide-sand-100">
+              <div className="divide-y divide-sand-100 dark:divide-dark-800">
                 {/* Host */}
                 {(() => {
                   const hostMember = sessionData.members.find(
@@ -709,14 +745,14 @@ export default function ActiveSessionPage() {
                   );
                   return (
                     <div className="flex items-center gap-4 p-4">
-                      <div className="w-10 h-10 rounded-full bg-gold-100 text-gold-600 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-gold-100 dark:bg-gold-900/40 text-gold-600 dark:text-gold-400 flex items-center justify-center">
                         <Crown className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-sand-900">
+                        <p className="font-medium text-sand-900 dark:text-sand-100">
                           {sessionData.host.name || sessionData.host.username}
                         </p>
-                        <p className="text-sm text-sand-500">
+                        <p className="text-sm text-sand-500 dark:text-sand-400">
                           Host{" "}
                           {hostMember
                             ? hostMember.isReady
@@ -726,7 +762,7 @@ export default function ActiveSessionPage() {
                         </p>
                       </div>
                       {sessionData.hostId === currentUserId && (
-                        <span className="px-2 py-1 bg-fairway-100 text-fairway-700 text-xs font-medium rounded-full">
+                        <span className="px-2 py-1 bg-fairway-100 dark:bg-fairway-900/40 text-fairway-700 dark:text-fairway-400 text-xs font-medium rounded-full">
                           You
                         </span>
                       )}
@@ -739,19 +775,19 @@ export default function ActiveSessionPage() {
                   .filter((m) => m.userId !== sessionData.hostId)
                   .map((m) => (
                     <div key={m.id} className="flex items-center gap-4 p-4">
-                      <div className="w-10 h-10 rounded-full bg-fairway-100 text-fairway-600 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-fairway-100 dark:bg-fairway-900/40 text-fairway-600 dark:text-fairway-400 flex items-center justify-center">
                         {m.user.name?.[0] || m.user.username[0] || "?"}
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-sand-900">
+                        <p className="font-medium text-sand-900 dark:text-sand-100">
                           {m.user.name || m.user.username}
                         </p>
-                        <p className="text-sm text-sand-500">
+                        <p className="text-sm text-sand-500 dark:text-sand-400">
                           {m.isReady ? "Ready" : "Not Ready"}
                         </p>
                       </div>
                       {m.userId === currentUserId && (
-                        <span className="px-2 py-1 bg-fairway-100 text-fairway-700 text-xs font-medium rounded-full">
+                        <span className="px-2 py-1 bg-fairway-100 dark:bg-fairway-900/40 text-fairway-700 dark:text-fairway-400 text-xs font-medium rounded-full">
                           You
                         </span>
                       )}
@@ -775,7 +811,7 @@ export default function ActiveSessionPage() {
                       repeat: Infinity,
                       ease: "linear",
                     }}
-                    className="w-5 h-5 border-2 border-sand-300 border-t-sand-700 rounded-full"
+                    className="w-5 h-5 border-2 border-sand-300 dark:border-sand-600 border-t-sand-700 dark:border-t-sand-300 rounded-full"
                   />
                   Updating...
                 </span>
@@ -832,22 +868,26 @@ export default function ActiveSessionPage() {
           >
             {/* Live Leaderboard */}
             <div className="card overflow-hidden">
-              <div className="bg-gold-gradient px-4 py-3 flex items-center justify-between">
+              <div className="bg-gold-gradient dark:bg-gold-gradient-dark px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-fairway-700" />
-                  <h3 className="font-display font-semibold text-fairway-900">
+                  <Trophy className="w-5 h-5 text-fairway-700 dark:text-fairway-800" />
+                  <h3 className="font-display font-semibold text-fairway-900 dark:text-fairway-950">
                     Leaderboard
                   </h3>
                 </div>
-                <span className="text-sm text-fairway-700/70">Live</span>
+                <span className="text-sm text-fairway-700/70 dark:text-fairway-800/70">
+                  Live
+                </span>
               </div>
-              <div className="divide-y divide-sand-100">
+              <div className="divide-y divide-sand-100 dark:divide-dark-800">
                 {players.map((player, index) => (
                   <motion.div
                     key={player.userId}
                     layout
                     className={`flex items-center gap-4 p-4 ${
-                      player.userId === currentUserId ? "bg-fairway-50" : ""
+                      player.userId === currentUserId
+                        ? "bg-fairway-50 dark:bg-fairway-900/20"
+                        : ""
                     }`}
                   >
                     <div
@@ -855,24 +895,24 @@ export default function ActiveSessionPage() {
                         index === 0
                           ? "bg-gold-500 text-white"
                           : index === 1
-                          ? "bg-sand-300 text-sand-700"
+                          ? "bg-sand-300 dark:bg-dark-500 text-sand-700 dark:text-sand-200"
                           : index === 2
                           ? "bg-amber-600 text-white"
-                          : "bg-sand-100 text-sand-500"
+                          : "bg-sand-100 dark:bg-dark-700 text-sand-500 dark:text-sand-400"
                       }`}
                     >
                       {index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sand-900 truncate">
+                      <p className="font-medium text-sand-900 dark:text-sand-100 truncate">
                         {player.userName}
                         {player.userId === currentUserId && (
-                          <span className="ml-2 text-xs text-fairway-600">
+                          <span className="ml-2 text-xs text-fairway-600 dark:text-fairway-400">
                             (You)
                           </span>
                         )}
                       </p>
-                      <p className="text-xs text-sand-500">
+                      <p className="text-xs text-sand-500 dark:text-sand-400">
                         Thru {player.scores.filter((s) => s > 0).length}
                       </p>
                     </div>
@@ -880,17 +920,17 @@ export default function ActiveSessionPage() {
                       <p
                         className={`text-xl font-display font-bold ${
                           player.totalScore === 0
-                            ? "text-sand-300"
+                            ? "text-sand-300 dark:text-sand-600"
                             : player.scoreToPar <= 0
-                            ? "text-birdie"
-                            : "text-bogey"
+                            ? "text-birdie dark:text-emerald-400"
+                            : "text-bogey dark:text-amber-400"
                         }`}
                       >
                         {player.totalScore > 0
                           ? formatScoreToPar(player.scoreToPar)
                           : "—"}
                       </p>
-                      <p className="text-sm text-sand-500">
+                      <p className="text-sm text-sand-500 dark:text-sand-400">
                         {player.totalScore || "—"}
                       </p>
                     </div>
@@ -902,7 +942,7 @@ export default function ActiveSessionPage() {
             {/* Score Entry Card */}
             <div className="card overflow-hidden">
               {/* Hole Header */}
-              <div className="bg-fairway-gradient text-white p-6">
+              <div className="bg-fairway-gradient dark:bg-fairway-gradient-dark text-white p-6">
                 <div className="flex items-center justify-between mb-4">
                   <button
                     onClick={() => setCurrentHole((h) => (h > 1 ? h - 1 : h))}
@@ -947,15 +987,15 @@ export default function ActiveSessionPage() {
               <div className="p-6 space-y-6">
                 {/* Strokes Input */}
                 <div>
-                  <p className="text-sm font-medium text-sand-600 mb-3 text-center">
+                  <p className="text-sm font-medium text-sand-600 dark:text-sand-400 mb-3 text-center">
                     Strokes
                   </p>
                   <div className="flex items-center justify-center gap-6">
                     <button
                       onClick={() => setStrokes((s) => Math.max(1, s - 1))}
-                      className="w-12 h-12 rounded-full bg-sand-100 hover:bg-sand-200 flex items-center justify-center transition-colors"
+                      className="w-12 h-12 rounded-full bg-sand-100 dark:bg-dark-800 hover:bg-sand-200 dark:hover:bg-dark-700 flex items-center justify-center transition-colors"
                     >
-                      <Minus className="w-5 h-5 text-sand-600" />
+                      <Minus className="w-5 h-5 text-sand-600 dark:text-sand-400" />
                     </button>
 
                     <motion.div
@@ -971,9 +1011,9 @@ export default function ActiveSessionPage() {
 
                     <button
                       onClick={() => setStrokes((s) => Math.min(15, s + 1))}
-                      className="w-12 h-12 rounded-full bg-sand-100 hover:bg-sand-200 flex items-center justify-center transition-colors"
+                      className="w-12 h-12 rounded-full bg-sand-100 dark:bg-dark-800 hover:bg-sand-200 dark:hover:bg-dark-700 flex items-center justify-center transition-colors"
                     >
-                      <Plus className="w-5 h-5 text-sand-600" />
+                      <Plus className="w-5 h-5 text-sand-600 dark:text-sand-400" />
                     </button>
                   </div>
 
@@ -993,8 +1033,8 @@ export default function ActiveSessionPage() {
                           onClick={() => setStrokes(score)}
                           className={`py-2 rounded-xl text-sm font-medium transition-all ${
                             strokes === score
-                              ? "bg-fairway-500 text-white"
-                              : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                              ? "bg-fairway-500 dark:bg-fairway-600 text-white"
+                              : "bg-sand-100 dark:bg-dark-800 text-sand-600 dark:text-sand-400 hover:bg-sand-200 dark:hover:bg-dark-700"
                           }`}
                         >
                           {score}
@@ -1005,7 +1045,7 @@ export default function ActiveSessionPage() {
 
                 {/* Putts Input */}
                 <div>
-                  <p className="text-sm font-medium text-sand-600 mb-3 text-center">
+                  <p className="text-sm font-medium text-sand-600 dark:text-sand-400 mb-3 text-center">
                     Putts
                   </p>
                   <div className="flex items-center justify-center gap-2">
@@ -1015,8 +1055,8 @@ export default function ActiveSessionPage() {
                         onClick={() => setPutts(num)}
                         className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-medium transition-all ${
                           putts === num
-                            ? "bg-fairway-500 text-white"
-                            : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                            ? "bg-fairway-500 dark:bg-fairway-600 text-white"
+                            : "bg-sand-100 dark:bg-dark-800 text-sand-600 dark:text-sand-400 hover:bg-sand-200 dark:hover:bg-dark-700"
                         }`}
                       >
                         {num}
@@ -1030,8 +1070,8 @@ export default function ActiveSessionPage() {
                       }
                       className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-medium transition-all ${
                         putts !== undefined && putts > 4
-                          ? "bg-fairway-500 text-white"
-                          : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                          ? "bg-fairway-500 dark:bg-fairway-600 text-white"
+                          : "bg-sand-100 dark:bg-dark-800 text-sand-600 dark:text-sand-400 hover:bg-sand-200 dark:hover:bg-dark-700"
                       }`}
                     >
                       {putts !== undefined && putts > 4 ? putts : "5+"}
@@ -1044,7 +1084,7 @@ export default function ActiveSessionPage() {
                   {/* Fairway Hit - Only show for Par 4 and Par 5 */}
                   {(hole?.par ?? 4) >= 4 && (
                     <div>
-                      <p className="text-sm font-medium text-sand-600 mb-2 text-center">
+                      <p className="text-sm font-medium text-sand-600 dark:text-sand-400 mb-2 text-center">
                         Fairway
                       </p>
                       <div className="flex gap-2">
@@ -1052,8 +1092,8 @@ export default function ActiveSessionPage() {
                           onClick={() => setFairwayHit(true)}
                           className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
                             fairwayHit === true
-                              ? "bg-birdie text-white"
-                              : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                              ? "bg-birdie dark:bg-emerald-600 text-white"
+                              : "bg-sand-100 dark:bg-dark-800 text-sand-600 dark:text-sand-400 hover:bg-sand-200 dark:hover:bg-dark-700"
                           }`}
                         >
                           <Check className="w-4 h-4" />
@@ -1063,8 +1103,8 @@ export default function ActiveSessionPage() {
                           onClick={() => setFairwayHit(false)}
                           className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
                             fairwayHit === false
-                              ? "bg-bogey text-white"
-                              : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                              ? "bg-bogey dark:bg-amber-600 text-white"
+                              : "bg-sand-100 dark:bg-dark-800 text-sand-600 dark:text-sand-400 hover:bg-sand-200 dark:hover:bg-dark-700"
                           }`}
                         >
                           <X className="w-4 h-4" />
@@ -1078,7 +1118,7 @@ export default function ActiveSessionPage() {
                   <div
                     className={`${(hole?.par ?? 4) < 4 ? "col-span-2" : ""}`}
                   >
-                    <p className="text-sm font-medium text-sand-600 mb-2 text-center">
+                    <p className="text-sm font-medium text-sand-600 dark:text-sand-400 mb-2 text-center">
                       Green in Reg
                     </p>
                     <div className="flex gap-2">
@@ -1086,8 +1126,8 @@ export default function ActiveSessionPage() {
                         onClick={() => setGreenInReg(true)}
                         className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
                           greenInReg === true
-                            ? "bg-birdie text-white"
-                            : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                            ? "bg-birdie dark:bg-emerald-600 text-white"
+                            : "bg-sand-100 dark:bg-dark-800 text-sand-600 dark:text-sand-400 hover:bg-sand-200 dark:hover:bg-dark-700"
                         }`}
                       >
                         <Check className="w-4 h-4" />
@@ -1097,8 +1137,8 @@ export default function ActiveSessionPage() {
                         onClick={() => setGreenInReg(false)}
                         className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
                           greenInReg === false
-                            ? "bg-bogey text-white"
-                            : "bg-sand-100 text-sand-600 hover:bg-sand-200"
+                            ? "bg-bogey dark:bg-amber-600 text-white"
+                            : "bg-sand-100 dark:bg-dark-800 text-sand-600 dark:text-sand-400 hover:bg-sand-200 dark:hover:bg-dark-700"
                         }`}
                       >
                         <X className="w-4 h-4" />
@@ -1136,25 +1176,33 @@ export default function ActiveSessionPage() {
                 </button>
 
                 {/* Running Total */}
-                <div className="bg-sand-50 rounded-xl p-4">
+                <div className="bg-sand-50 dark:bg-dark-800 rounded-xl p-4">
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
-                      <p className="text-xs text-sand-500">Through</p>
-                      <p className="text-lg font-bold text-sand-900">
+                      <p className="text-xs text-sand-500 dark:text-sand-400">
+                        Through
+                      </p>
+                      <p className="text-lg font-bold text-sand-900 dark:text-sand-100">
                         {playedHoles} holes
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-sand-500">Total</p>
-                      <p className="text-lg font-bold text-sand-900">
+                      <p className="text-xs text-sand-500 dark:text-sand-400">
+                        Total
+                      </p>
+                      <p className="text-lg font-bold text-sand-900 dark:text-sand-100">
                         {myTotalScore || "—"}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-sand-500">To Par</p>
+                      <p className="text-xs text-sand-500 dark:text-sand-400">
+                        To Par
+                      </p>
                       <p
                         className={`text-lg font-bold ${
-                          myScoreToPar <= 0 ? "text-birdie" : "text-bogey"
+                          myScoreToPar <= 0
+                            ? "text-birdie dark:text-emerald-400"
+                            : "text-bogey dark:text-amber-400"
                         }`}
                       >
                         {playedHoles ? formatScoreToPar(myScoreToPar) : "E"}
@@ -1179,12 +1227,12 @@ export default function ActiveSessionPage() {
                     onClick={() => setCurrentHole(i + 1)}
                     className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
                       currentHole === i + 1
-                        ? "ring-2 ring-fairway-500 ring-offset-2"
+                        ? "ring-2 ring-fairway-500 dark:ring-fairway-400 ring-offset-2 dark:ring-offset-dark-950"
                         : ""
                     } ${
                       score
                         ? getScoreColor(relative!)
-                        : "bg-sand-100 text-sand-400"
+                        : "bg-sand-100 dark:bg-dark-800 text-sand-400 dark:text-sand-500"
                     }`}
                   >
                     {score || i + 1}
@@ -1198,14 +1246,14 @@ export default function ActiveSessionPage() {
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="card p-6 bg-gradient-to-br from-gold-50 to-gold-100 border-gold-200"
+                className="card p-6 bg-gradient-to-br from-gold-50 to-gold-100 dark:from-gold-900/30 dark:to-gold-800/30 border-gold-200 dark:border-gold-700"
               >
                 <div className="text-center mb-4">
                   <Trophy className="w-12 h-12 text-gold-500 mx-auto mb-2" />
-                  <h3 className="text-xl font-display font-bold text-sand-900">
+                  <h3 className="text-xl font-display font-bold text-sand-900 dark:text-sand-100">
                     Round Complete!
                   </h3>
-                  <p className="text-sand-600">
+                  <p className="text-sand-600 dark:text-sand-400">
                     You scored {myTotalScore} ({formatScoreToPar(myScoreToPar)})
                   </p>
                 </div>
@@ -1240,16 +1288,18 @@ export default function ActiveSessionPage() {
 
             {/* Or show progress toward completion */}
             {!allHolesScored && playedHoles > 0 && (
-              <div className="card p-4 bg-sand-50">
+              <div className="card p-4 bg-sand-50 dark:bg-dark-800">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-sand-600">Round Progress</span>
-                  <span className="text-sm font-medium text-sand-900">
+                  <span className="text-sm text-sand-600 dark:text-sand-400">
+                    Round Progress
+                  </span>
+                  <span className="text-sm font-medium text-sand-900 dark:text-sand-100">
                     {playedHoles} / {holes.length} holes
                   </span>
                 </div>
-                <div className="w-full bg-sand-200 rounded-full h-2">
+                <div className="w-full bg-sand-200 dark:bg-dark-700 rounded-full h-2">
                   <div
-                    className="bg-fairway-500 h-2 rounded-full transition-all"
+                    className="bg-fairway-500 dark:bg-fairway-400 h-2 rounded-full transition-all"
                     style={{ width: `${(playedHoles / holes.length) * 100}%` }}
                   />
                 </div>
@@ -1274,20 +1324,25 @@ export default function ActiveSessionPage() {
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl z-40 max-h-[70vh] flex flex-col"
+              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-dark-900 rounded-t-2xl z-40 max-h-[70vh] flex flex-col"
             >
-              <div className="flex items-center justify-between p-4 border-b border-sand-100">
-                <h3 className="font-display font-semibold text-sand-900">
+              <div className="flex items-center justify-between p-4 border-b border-sand-100 dark:border-dark-800">
+                <h3 className="font-display font-semibold text-sand-900 dark:text-sand-100">
                   Group Chat
                 </h3>
-                <button onClick={() => setShowChat(false)}>
-                  <X className="w-5 h-5 text-sand-500" />
+                <button
+                  onClick={() => {
+                    setShowChat(false);
+                    setLastReadCount(chatMessages.length);
+                  }}
+                >
+                  <X className="w-5 h-5 text-sand-500 dark:text-sand-400" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {chatMessages.length === 0 ? (
-                  <p className="text-center text-sand-400 py-8">
+                  <p className="text-center text-sand-400 dark:text-sand-500 py-8">
                     No messages yet. Start the conversation!
                   </p>
                 ) : (
@@ -1303,8 +1358,8 @@ export default function ActiveSessionPage() {
                       <div
                         className={`max-w-[80%] px-4 py-2 rounded-2xl ${
                           msg.userId === currentUserId
-                            ? "bg-fairway-500 text-white"
-                            : "bg-sand-100 text-sand-900"
+                            ? "bg-fairway-500 dark:bg-fairway-600 text-white"
+                            : "bg-sand-100 dark:bg-dark-800 text-sand-900 dark:text-sand-100"
                         }`}
                       >
                         <p className="text-xs opacity-70 mb-1">
@@ -1317,7 +1372,7 @@ export default function ActiveSessionPage() {
                 )}
               </div>
 
-              <div className="p-4 border-t border-sand-100 flex gap-2">
+              <div className="p-4 border-t border-sand-100 dark:border-dark-800 flex gap-2">
                 <input
                   type="text"
                   value={chatInput}

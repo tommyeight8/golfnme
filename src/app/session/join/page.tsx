@@ -84,7 +84,7 @@ function JoinSessionContent() {
   };
 
   return (
-    <div className="min-h-screen bg-sand-50">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-gold-gradient text-fairway-900">
         <div className="max-w-3xl mx-auto px-4 py-6">
@@ -195,7 +195,7 @@ export default function JoinSessionPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-sand-50 flex items-center justify-center">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
@@ -306,7 +306,7 @@ export default function JoinSessionPage() {
 //   }
 
 //   return (
-//     <div className="min-h-screen bg-sand-50">
+//     <div className="min-h-screen bg-slate-50">
 //       {/* Header */}
 //       <header className="bg-gold-gradient text-fairway-900">
 //         <div className="max-w-3xl mx-auto px-4 py-6">
@@ -414,7 +414,7 @@ export default function JoinSessionPage() {
 // export default function JoinSessionPage() {
 //   return (
 //     <Suspense fallback={
-//       <div className="min-h-screen bg-sand-50 flex items-center justify-center">
+//       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
 //         <motion.div
 //           animate={{ rotate: 360 }}
 //           transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
